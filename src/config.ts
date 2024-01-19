@@ -7,6 +7,7 @@ const logger = createLogger("config");
 
 logger("Parsing config");
 logToPublicLog("Parsing config");
+logToPublicLog("Ido");
 
 const {
   DAYS_BACK,
@@ -18,6 +19,8 @@ const {
   ACCOUNTS_TO_SCRAPE = "",
   FUTURE_MONTHS = "",
 } = process.env;
+
+logToPublicLog(`process.env ${process.env}`)
 
 /**
  * Add default values in case the value is falsy (0 is not valid here) or an empty string
