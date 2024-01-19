@@ -58,7 +58,7 @@ export const FileHeaders = [
 
 function parseAccounts(accountsJson?: string): Array<AccountConfig> {
   try {
-    console.log(`accountsJson: ${accountsJson}`);
+    logToPublicLog(`accountsJson: ${accountsJson}`);
     const parsed = JSON.parse(accountsJson!);
     if (Array.isArray(parsed)) {
       // TODO: Add schema validations?
