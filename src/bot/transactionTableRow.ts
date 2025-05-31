@@ -26,6 +26,8 @@ export type TableRow = Omit<
   "amount"
 > & {
   amount: number;
+  pdf_link?: string;
+  doc_number?: string;
 };
 
 export function tableRow(tx: TransactionRow): TableRow {
@@ -45,5 +47,7 @@ export function tableRow(tx: TransactionRow): TableRow {
     chargedCurrency:
       normalizeCurrency(tx.chargedCurrency) ||
       normalizeCurrency(tx.originalCurrency),
+    pdf_link: tx.pdf_link,
+    doc_number: tx.doc_number,
   };
 }

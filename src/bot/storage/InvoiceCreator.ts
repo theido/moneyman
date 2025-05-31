@@ -29,7 +29,7 @@ export class InvoiceCreator {
             api_key: this.apiKey,
             date: date,
             type: 320,
-            // transaction_id: txn.uniqueId,
+            transaction_id: txn.uniqueId,
             customer_name: txn.description,
             forceItemsIntoNonItemsDocument: 1,
             show_items_including_vat: 1,

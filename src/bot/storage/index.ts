@@ -59,8 +59,9 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
   // use invoice creator to create invoices for the filtered txns
   const { InvoiceCreator } = await import("./InvoiceCreator.js");
   const invoiceCreator = new InvoiceCreator();
+  let invoiceResults: TransactionRow[] = txns;
   try {
-    const invoiceResults = await invoiceCreator.createInvoicesForTransactions(txns);
+    invoiceResults = await invoiceCreator.createInvoicesForTransactions(txns);
     baseLogger("Invoice creation results:", invoiceResults);
   } catch (e) {
     baseLogger("Error creating invoices:", e);
@@ -74,10 +75,10 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
       const steps: Array<Timer> = [];
 
       try {
-        logger(`saving ${txns.length} transactions`);
+        logger(`saving ${invoiceResults.length} transactions`);
         const message = await send(saving(name));
         const start = performance.now();
-        const stats = await storage.saveTransactions(txns, async (step) => {
+        const stats = await storage.saveTransactions(invoiceResults, async (step) => {
           steps.at(-1)?.end();
           steps.push(new Timer(step));
           await editMessage(message?.message_id, saving(name, steps));
