@@ -27,7 +27,7 @@ export const storages = [
   new YNABStorage(),
   new BuxferStorage(),
   new WebPostStorage(),
-  new TelegramStorage(),
+  // new TelegramStorage(),
 ].filter((s) => s.canSave());
 
 export async function saveResults(results: Array<AccountScrapeResult>) {
@@ -36,10 +36,35 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
     return;
   }
 
-  const txns = resultsToTransactions(results);
+  const vendors = [
+    "ארבע עונות",
+    // "ילין",
+    "אלטשולר",
+    "מור",
+    "אנליסט",
+    "מגדל",
+    "כלל",
+    "הראל",
+    "פניקס",
+    "מנורה",
+  ];
+  const vendorRegex = new RegExp(vendors.join("|"));
+  const txns = resultsToTransactions(results)
+    .filter(txn => txn.originalAmount > 0)
+    .filter(txn => typeof txn.description === "string" && vendorRegex.test(txn.description));
   if (txns.length === 0) {
-    await send("No transactions found, skipping save");
+    await send("No positive transactions found, skipping save");
     return;
+  }
+  // use invoice creator to create invoices for the filtered txns
+  const { InvoiceCreator } = await import("./InvoiceCreator.js");
+  const invoiceCreator = new InvoiceCreator();
+  try {
+    const invoiceResults = await invoiceCreator.createInvoicesForTransactions(txns);
+    baseLogger("Invoice creation results:", invoiceResults);
+  } catch (e) {
+    baseLogger("Error creating invoices:", e);
+    await sendError(e, "InvoiceCreator");
   }
 
   await parallel(

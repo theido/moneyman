@@ -26,8 +26,8 @@ export class GoogleSheetsStorage implements TransactionStorage {
   canSave() {
     return Boolean(
       GOOGLE_SHEET_ID &&
-        GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-        GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
+      GOOGLE_SERVICE_ACCOUNT_EMAIL &&
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
     );
   }
 
