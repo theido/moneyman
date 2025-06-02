@@ -1,5 +1,5 @@
 {
-  "name": "moneyman",
+  "name": "invoices-bot",
   "version": "1.0.0",
   "description": "",
   "main": "dst/index.ts",
@@ -18,16 +18,7 @@
     "test": "jest",
     "test:scraper-access": "jest -c jest.scraper-access.config.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/daniel-hauser/moneyman.git"
-  },
-  "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/daniel-hauser/moneyman/issues"
-  },
-  "homepage": "https://github.com/daniel-hauser/moneyman#readme",
   "dependencies": {
     "@mswjs/interceptors": "^0.38.6",
     "async": "^3.2.6",
