@@ -37,7 +37,6 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
   }
 
   const vendors = [
-    "ארבע עונות",
     "ילין",
     "אלטשולר",
     "מור",

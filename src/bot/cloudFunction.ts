@@ -1,4 +1,6 @@
 import { runWithStorage } from "./index.js";
+import { RunnerHooks } from "../types.js";
+
 // Import the runScraper function from the main entry point
 import { runScraper } from "../index.js";
 
