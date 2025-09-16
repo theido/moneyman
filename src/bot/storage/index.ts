@@ -17,8 +17,33 @@ import { createLogger } from "../../utils/logger.js";
 import { statsString } from "../saveStats.js";
 import { parallel } from "async";
 import { Timer } from "../../utils/Timer.js";
+import { InvoiceCreator } from "./InvoiceCreator.js";
 
 const baseLogger = createLogger("storage");
+
+/**
+ * Filters transactions to only include those from insurance vendors
+ * @param transactions Array of transactions to filter
+ * @returns Filtered transactions that match insurance vendors
+ */
+function filterInsuranceVendorTransactions(transactions: TransactionRow[]): TransactionRow[] {
+  const vendors = [
+    "ילין",
+    "אלטשולר",
+    "מור",
+    "אנליסט",
+    "מגדל",
+    "כלל",
+    "הראל",
+    "פניקס",
+    "מנורה",
+  ];
+  const vendorRegex = new RegExp(vendors.join("|"));
+
+  return transactions
+    .filter(txn => txn.originalAmount > 0)
+    .filter(txn => typeof txn.description === "string" && vendorRegex.test(txn.description));
+}
 
 export const storages = [
   new LocalJsonStorage(),
@@ -36,27 +61,14 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
     return;
   }
 
-  const vendors = [
-    "ילין",
-    "אלטשולר",
-    "מור",
-    "אנליסט",
-    "מגדל",
-    "כלל",
-    "הראל",
-    "פניקס",
-    "מנורה",
-  ];
-  const vendorRegex = new RegExp(vendors.join("|"));
-  const txns = resultsToTransactions(results)
-    .filter(txn => txn.originalAmount > 0)
-    .filter(txn => typeof txn.description === "string" && vendorRegex.test(txn.description));
+  const allTransactions = resultsToTransactions(results);
+  const txns = filterInsuranceVendorTransactions(allTransactions);
+
   if (txns.length === 0) {
     await send("No positive transactions found, skipping save");
     return;
   }
   // use invoice creator to create invoices for the filtered txns
-  const { InvoiceCreator } = await import("./InvoiceCreator.js");
   const invoiceCreator = new InvoiceCreator();
   let invoiceResults: TransactionRow[] = txns;
   try {
