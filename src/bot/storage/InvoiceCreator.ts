@@ -20,7 +20,7 @@ export class InvoiceCreator {
         return `${day}/${month}/${year}`;
     }
 
-    async createInvoiceForTransaction(txn: TransactionRow) {
+async createInvoiceForTransaction(txn: TransactionRow) {
         // You can adjust these values as needed
         const price = Math.abs(txn.originalAmount);
         const date = this.formatDate(txn.processedDate);
