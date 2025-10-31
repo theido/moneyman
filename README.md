@@ -249,10 +249,62 @@ options: {
        * @replaces TELEGRAM_CHAT_ID environment variable
        */
       chatId: string;
+      /**
+       * Enable OTP (One-Time Password) support for 2FA authentication.
+       * When enabled, the bot will ask for OTP codes via Telegram during scraping.
+       * @default false
+       */
+      enableOtp?: boolean;
+      /**
+       * Maximum time in seconds to wait for OTP response from user.
+       * @default 300 (5 minutes)
+       */
+      otpTimeoutSeconds?: number;
     };
   };
 };
 ```
+
+#### Using OTP 2FA with OneZero Accounts
+
+If you have OneZero accounts that require 2FA authentication, you can enable OTP support:
+
+1. **Enable OTP in your configuration**:
+
+   ```json
+   {
+     "options": {
+       "notifications": {
+         "telegram": {
+           "apiKey": "your-telegram-bot-token",
+           "chatId": "your-chat-id",
+           "enableOtp": true,
+           "otpTimeoutSeconds": 300
+         }
+       }
+     }
+   }
+   ```
+
+2. **Configure your OneZero account with phone number**:
+
+   ```json
+   {
+     "accounts": [
+       {
+         "companyId": "oneZero",
+         "email": "your-email@example.com",
+         "password": "your-password",
+         "phoneNumber": "+972501234567"
+       }
+     ]
+   }
+   ```
+
+3. **During scraping**: When a OneZero account requires 2FA, the bot will:
+   - Send a message asking for the OTP code
+   - Wait for you to reply with the code (4-8 digits)
+   - Continue the scraping process automatically
 
 ### Export to Azure Data Explorer
 
@@ -399,6 +451,35 @@ storage: {
 
 > [!IMPORTANT]
 > Be sure to post only to a trusted server.
+
+### Export to PostgreSQL
+
+Persist transactions in a PostgreSQL database for analytics or downstream integrations.
+
+- moneyman creates (or reuses) a dedicated schema named `moneyman` by default. You can override the schema name with the `schema` property if you prefer a different dedicated schema.
+- Within that schema two tables are maintained:
+  - `transactions` – one row per completed transaction, upserted by `unique_id`.
+  - `transactions_raw` – an append-only log that stores every scrape (including pending transactions) together with the original JSON payload.
+
+Use the following configuration to setup:
+
+```typescript
+storage: {
+  sql?: {
+    /**
+     * PostgreSQL connection string (for example: "postgresql://user:pass@host:5432/moneyman")
+     */
+    connectionString: string;
+    /**
+     * Optional dedicated schema for moneyman data. Defaults to "moneyman".
+     */
+    schema?: string;
+  };
+};
+```
+
+> [!TIP]
+> Grant the configured user rights to create the schema (first run) and manage the two tables.
 
 ### Export to excel on OneDrive
 

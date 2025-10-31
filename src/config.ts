@@ -12,7 +12,7 @@ import {
   LoggingOptionsSchema,
   NotificationOptionsSchema,
 } from "./config.schema.js";
-import { a } from "@mswjs/interceptors/lib/node/BatchInterceptor-5b72232f.js";
+import { sendDeprecationMessage } from "./bot/deprecationManager.js";
 
 export type { MoneymanConfig } from "./config.schema.js";
 
@@ -159,10 +159,11 @@ function convertEnvVarsToConfig(): MoneymanConfig {
 
   // Convert notification options
   if (process.env.TELEGRAM_API_KEY) {
-    config.options.notifications.telegram = {
-      apiKey: process.env.TELEGRAM_API_KEY,
-      chatId: process.env.TELEGRAM_CHAT_ID || "",
-    };
+    config.options.notifications.telegram =
+      NotificationOptionsSchema.shape.telegram.parse({
+        apiKey: process.env.TELEGRAM_API_KEY,
+        chatId: process.env.TELEGRAM_CHAT_ID || "",
+      });
   }
 
   // Convert logging options
@@ -191,6 +192,8 @@ function createConfig() {
     } else {
       try {
         logger("Converting environment variables to MONEYMAN_CONFIG format...");
+        // Send deprecation message for old environment variables usage
+        sendDeprecationMessage("removeEnvVars");
         return MoneymanConfigSchema.parse(convertEnvVarsToConfig());
       } catch (error) {
         logger("Failed to convert env vars to MONEYMAN_CONFIG", error);
@@ -205,12 +208,16 @@ function createConfig() {
       options: {
         scraping: ScrapingOptionsSchema.parse({}),
         security: SecurityOptionsSchema.parse({}),
-        notifications: NotificationOptionsSchema.parse({
-          telegram: {
-            apiKey: process.env.TELEGRAM_API_KEY || "",
-            chatId: process.env.TELEGRAM_CHAT_ID || "",
-          },
-        }),
+        notifications: NotificationOptionsSchema.parse(
+          process.env.TELEGRAM_API_KEY && process.env.TELEGRAM_CHAT_ID
+            ? {
+                telegram: {
+                  apiKey: process.env.TELEGRAM_API_KEY,
+                  chatId: process.env.TELEGRAM_CHAT_ID,
+                },
+              }
+            : {},
+        ),
         logging: LoggingOptionsSchema.parse({}),
       },
     };
