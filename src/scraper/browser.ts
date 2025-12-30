@@ -25,7 +25,7 @@ export async function createBrowser(): Promise<Browser> {
   const options = {
     args: browserArgs,
     executablePath: browserExecutablePath,
-  } satisfies PuppeteerLau5snchOptions;
+  } satisfies PuppeteerLaunchOptions;
 
   logger("Creating browser", options);
   return puppeteer.launch(options);
