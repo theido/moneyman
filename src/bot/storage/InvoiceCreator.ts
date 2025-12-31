@@ -1,14 +1,19 @@
 import { TransactionRow } from "../../types";
+import type { MoneymanConfig } from "../../config.js";
 
 export class InvoiceCreator {
     baseUrl: string;
     developerEmail: string;
     apiKey: string;
 
-    constructor() {
-        this.baseUrl = process.env.INVOICE_BASE_URL!;
-        this.developerEmail = process.env.INVOICE_DEVELOPER_EMAIL!;
-        this.apiKey = process.env.INVOICE_API_KEY!;
+    constructor(config: MoneymanConfig) {
+        const invoiceConfig = config.storage.invoice;
+        if (!invoiceConfig) {
+            throw new Error("Invoice configuration not found in config.storage.invoice");
+        }
+        this.baseUrl = invoiceConfig.baseUrl;
+        this.developerEmail = invoiceConfig.developerEmail;
+        this.apiKey = invoiceConfig.apiKey;
     }
 
     // Helper to format date as DD/MM/YYYY
