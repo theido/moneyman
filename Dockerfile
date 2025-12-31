@@ -1,4 +1,4 @@
-FROM node:24-trixie AS builder
+FROM node:latest AS builder
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
@@ -16,7 +16,7 @@ RUN npm run build && \
     npm cache clean --force && \
     rm -rf src
 
-FROM node:24-trixie-slim AS runner
+FROM node:slim AS runner
 
 ENV NODE_ENV=production
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
@@ -36,5 +36,10 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dst ./dst
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/
 
-CMD ["node", "dst/index.js"]
+ENV MONEYMAN_UNSAFE_STDOUT=false
+ENV MONEYMAN_LOG_FILE_PATH=/tmp/moneyman.log
+ENV MONEYMAN_PUBLIC_LOG_FD=3
+
+ENTRYPOINT ["docker-entrypoint.sh"]

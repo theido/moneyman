@@ -71,6 +71,22 @@ export const SqlStorageSchema = z.object({
     .default("moneyman"),
 });
 
+export const LocalJsonSchema = z.object({
+  enabled: z.boolean(),
+  path: z.string().optional(),
+});
+
+export const TelegramStorageSchema = z.object({
+  /**
+   * Whether to send transactions as a JSON file to the Telegram chat.
+   * When enabled, all scraped transactions will be sent to your Telegram chat.
+   * This is independent of notification messages (errors, progress, etc.) which
+   * are controlled by options.notifications.telegram.
+   * @default true
+   */
+  enabled: z.boolean().default(true),
+});
+
 // Storage configuration schema
 export const StorageSchema = z
   .object({
@@ -79,13 +95,15 @@ export const StorageSchema = z
     azure: AzureSchema.optional(),
     buxfer: BuxferSchema.optional(),
     actual: ActualSchema.optional(),
-    localJson: z.object({ enabled: z.boolean() }).optional(),
+    localJson: LocalJsonSchema.optional(),
     webPost: WebPostSchema.optional(),
     sql: SqlStorageSchema.optional(),
+    telegram: TelegramStorageSchema.optional(),
   })
   .refine((data) => Object.values(data).some(Boolean), {
     error: "At least one storage provider must be configured",
-  });
+  })
+  .default({ localJson: { enabled: true } });
 
 // Options schemas
 export const ScrapingOptionsSchema = z.object({
@@ -119,24 +137,45 @@ export const NotificationOptionsSchema = z.object({
        * Maximum time in seconds to wait for OTP response from user.
        */
       otpTimeoutSeconds: z.number().min(30).max(600).optional().default(300),
+      /**
+       * Whether to send the log file to Telegram when using secure logging (MONEYMAN_UNSAFE_STDOUT=false).
+       * Only applies when output redirection is enabled.
+       * @default true
+       */
+      sendLogFileToTelegram: z.boolean().optional().default(true),
     })
     .optional(),
 });
 
 export const LoggingOptionsSchema = z.object({
   getIpInfoUrl: z.url().default("https://ipinfo.io/json"),
+  debugFilter: z.string().optional().default("moneyman:*"),
+});
+
+const OptionsSchemaObject = z.object({
+  scraping: ScrapingOptionsSchema.prefault({}),
+  security: SecurityOptionsSchema.prefault({}),
+  notifications: NotificationOptionsSchema.prefault({}),
+  logging: LoggingOptionsSchema.prefault({}),
 });
 
 // Complete configuration schema
-export const MoneymanConfigSchema = z.object({
-  accounts: z.array(AccountSchema).default([]),
-  storage: StorageSchema,
-  options: z.object({
-    scraping: ScrapingOptionsSchema,
-    security: SecurityOptionsSchema,
-    notifications: NotificationOptionsSchema,
-    logging: LoggingOptionsSchema,
-  }),
-});
+export const MoneymanConfigSchema = z
+  .object({
+    accounts: z.array(AccountSchema).default([]),
+    storage: StorageSchema,
+    options: OptionsSchemaObject.prefault({}),
+  })
+  .prefault({});
 
 export type MoneymanConfig = z.infer<typeof MoneymanConfigSchema>;
+
+export const IntEnvVarSchema = z
+  .string()
+  .transform((val) => Number.parseInt(val, 10))
+  .catch(NaN);
+
+export const BooleanEnvVarSchema = z
+  .string()
+  .transform((val) => val.toLowerCase() === "true" || val === "1")
+  .catch(false);

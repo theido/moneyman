@@ -1,6 +1,5 @@
-import type { RunMetadata } from "./types";
 import { getUsedDomains } from "./security/domains.js";
-import { createLogger, metadataLogEntries } from "./utils/logger.js";
+import { createLogger } from "./utils/logger.js";
 import { config } from "./config.js";
 
 const logger = createLogger("runner-metadata");
@@ -15,12 +14,7 @@ export async function getExternalIp(): Promise<{ ip: string }> {
   }
 }
 
-export async function reportRunMetadata(
-  report: (metadata: RunMetadata) => Promise<void>,
-): Promise<void> {
-  const [domainsByCompany, networkInfo] = await Promise.all([
-    getUsedDomains(),
-    getExternalIp(),
-  ]);
-  await report({ domainsByCompany, networkInfo, metadataLogEntries });
+export async function logRunMetadata(): Promise<void> {
+  const domainsByCompany = await getUsedDomains();
+  logger("Used domains by company:", domainsByCompany);
 }
