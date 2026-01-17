@@ -1,13 +1,18 @@
-import type { RunMetadata } from "./types";
 import { getUsedDomains } from "./security/domains.js";
-import { createLogger, metadataLogEntries } from "./utils/logger.js";
+import { createLogger } from "./utils/logger.js";
 import { config } from "./config.js";
 
 const logger = createLogger("runner-metadata");
 
 export async function getExternalIp(): Promise<{ ip: string }> {
+  const ipInfoUrl = config.options.logging.getIpInfoUrl;
+
+  if (ipInfoUrl === false) {
+    return { ip: "disabled" };
+  }
+
   try {
-    const res = await fetch(config.options.logging.getIpInfoUrl);
+    const res = await fetch(ipInfoUrl);
     return res.json();
   } catch (e) {
     logger("Failed to get external IP", e);
@@ -15,12 +20,7 @@ export async function getExternalIp(): Promise<{ ip: string }> {
   }
 }
 
-export async function reportRunMetadata(
-  report: (metadata: RunMetadata) => Promise<void>,
-): Promise<void> {
-  const [domainsByCompany, networkInfo] = await Promise.all([
-    getUsedDomains(),
-    getExternalIp(),
-  ]);
-  await report({ domainsByCompany, networkInfo, metadataLogEntries });
+export async function logRunMetadata(): Promise<void> {
+  const usedDomains = await getUsedDomains();
+  logger("Used domains:", usedDomains);
 }
