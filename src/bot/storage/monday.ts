@@ -1,17 +1,10 @@
-const {
-  MONDAY_BOARD_ID,
-  MONDAY_TOKEN,
-  currentDate,
-  systemName,
-  TRANSACTION_HASH_TYPE,
-} = process.env;
 import axios from 'axios';
 import { parseISO, format } from "date-fns";
 import { TransactionStatuses } from "israeli-bank-scrapers/lib/transactions.js";
 import { createLogger, logToPublicLog } from "../../utils/logger.js";
 import { TransactionRow, TransactionStorage } from '../../types';
 import { SaveStats } from '../saveStats';
-import type { MoneymanConfig } from "../../config.js";
+import { systemName, type MoneymanConfig } from "../../config.js";
 
 const logger = createLogger("MondayStorage");
 const URL = 'https://api.monday.com/v2';
@@ -51,13 +44,14 @@ export class MondayStorage implements TransactionStorage {
   }
 
   canSave() {
-    return Boolean(MONDAY_BOARD_ID && MONDAY_TOKEN);
+    return Boolean(this.config.storage.monday);
   }
   private async loadHashes() {
-    if (!MONDAY_BOARD_ID) {
-      throw new Error('MONDAY_BOARD_ID is not defined');
+    const mondayConfig = this.config.storage.monday;
+    if (!mondayConfig) {
+      throw new Error('Monday configuration not found');
     }
-    const items = await this.getAllItemsFromBoard(+MONDAY_BOARD_ID);
+    const items = await this.getAllItemsFromBoard(+mondayConfig.boardId);
     for (const item of items) {
       const columnValue = item.column_values.find((col: any) => col.id === this.uniqueIdColumnID);
       if (columnValue && columnValue.text) {
@@ -68,8 +62,12 @@ export class MondayStorage implements TransactionStorage {
   }
 
   async getAllItemsFromBoard(boardId: number): Promise<Item[]> {
+    const mondayConfig = this.config.storage.monday;
+    if (!mondayConfig) {
+      throw new Error('Monday configuration not found');
+    }
     const headers = {
-      'Authorization': MONDAY_TOKEN,
+      'Authorization': mondayConfig.token,
       'Content-Type': 'application/json'
     };
     const today = new Date();
@@ -122,9 +120,13 @@ export class MondayStorage implements TransactionStorage {
 
     const txToSend: MondayTransaction[] = [];
 
+    const mondayConfig = this.config.storage.monday;
+    if (!mondayConfig) {
+      throw new Error('Monday configuration not found');
+    }
     const stats = {
       name: "MondayStorage",
-      table: MONDAY_BOARD_ID,
+      table: mondayConfig.boardId,
       total: txns.length,
       added: 0,
       pending: 0,
@@ -134,7 +136,7 @@ export class MondayStorage implements TransactionStorage {
 
     for (const tx of txns) {
       //Handeling existing transactions
-      if (TRANSACTION_HASH_TYPE === "moneyman") {
+      if (this.config.options.scraping.transactionHashType === "moneyman") {
         // Use the new uniqueId as the unique identifier for the transactions if the hash type is moneyman
         if (this.existingTransactionsHashes.has(tx.uniqueId)) {
           stats.existing++;
@@ -144,7 +146,7 @@ export class MondayStorage implements TransactionStorage {
       }
 
       if (this.existingTransactionsHashes.has(tx.hash)) {
-        if (TRANSACTION_HASH_TYPE === "moneyman") {
+        if (this.config.options.scraping.transactionHashType === "moneyman") {
           logger(`Skipping, old hash ${tx.hash} is already in the sheet`);
         }
 
@@ -176,10 +178,7 @@ export class MondayStorage implements TransactionStorage {
       logToPublicLog(
         `sending ${txToSend.length} transactions to Monday`,
       );
-      if (!MONDAY_BOARD_ID) {
-        throw new Error('MONDAY_BOARD_ID is not defined');
-      }
-      const resp = await this.createItemsFromTransactions(+MONDAY_BOARD_ID, txToSend);
+      const resp = await this.createItemsFromTransactions(+mondayConfig.boardId, txToSend);
 
       logToPublicLog("transactions sent to Monday successfully!");
       stats.otherSkipped += stats.existing;
@@ -219,9 +218,13 @@ export class MondayStorage implements TransactionStorage {
     const itemName = escapeString(transaction.description);
     const columnValues = escapeString(this.getColumnValues(transaction));
 
+    const mondayConfig = this.config.storage.monday;
+    if (!mondayConfig) {
+      throw new Error('Monday configuration not found');
+    }
     // Headers for the request
     const headers = {
-      'Authorization': MONDAY_TOKEN,
+      'Authorization': mondayConfig.token,
       'Content-Type': 'application/json'
     };
 
@@ -254,8 +257,12 @@ export class MondayStorage implements TransactionStorage {
   }
 
   private async checkItemExists(boardId: number, uniqueId: string): Promise<boolean> {
+    const mondayConfig = this.config.storage.monday;
+    if (!mondayConfig) {
+      throw new Error('Monday configuration not found');
+    }
     const headers = {
-      'Authorization': MONDAY_TOKEN,
+      'Authorization': mondayConfig.token,
       'Content-Type': 'application/json'
     };
 
@@ -299,7 +306,7 @@ export class MondayStorage implements TransactionStorage {
       memo: tx.memo ?? "",
       category: tx.category ?? "",
       account: `${tx.companyId} ${tx.account}`,
-      uniqueId: TRANSACTION_HASH_TYPE === "moneyman" ? tx.uniqueId : tx.hash,
+      uniqueId: this.config.options.scraping.transactionHashType === "moneyman" ? tx.uniqueId : tx.hash,
       scraped_at: format(Date.now(), "yyyy-MM-dd"),
       scraped_by: systemName ?? "",
       identifier: String(tx.identifier ?? ""),

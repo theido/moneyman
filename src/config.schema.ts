@@ -87,6 +87,17 @@ export const TelegramStorageSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
+export const MondaySchema = z.object({
+  /**
+   * The Monday.com board ID where transactions will be stored
+   */
+  boardId: z.string().min(1, { error: "Monday board ID is required" }),
+  /**
+   * The Monday.com API token for authentication
+   */
+  token: z.string().min(1, { error: "Monday token is required" }),
+});
+
 // Storage configuration schema
 export const StorageSchema = z
   .object({
@@ -99,6 +110,7 @@ export const StorageSchema = z
     webPost: WebPostSchema.optional(),
     sql: SqlStorageSchema.optional(),
     telegram: TelegramStorageSchema.optional(),
+    monday: MondaySchema.optional(),
   })
   .refine((data) => Object.values(data).some(Boolean), {
     error: "At least one storage provider must be configured",
