@@ -136,6 +136,31 @@ export const SecurityOptionsSchema = z.object({
   blockByDefault: z.boolean().default(false),
 });
 
+export const InsightsOptionsSchema = z.object({
+  /**
+   * Enable monthly expense insights notifications.
+   * When enabled, sends a summary of the current month's expenses after each scraping run.
+   * Requires Google Sheets storage to be configured for reading transaction history.
+   * @default false
+   */
+  enabled: z.boolean().default(false),
+  /**
+   * Show breakdown of expenses by category.
+   * @default true
+   */
+  showCategories: z.boolean().default(true),
+  /**
+   * Maximum number of top categories to show in the breakdown.
+   * @default 5
+   */
+  maxCategories: z.number().min(1).max(20).default(5),
+  /**
+   * Show daily average spending.
+   * @default true
+   */
+  showDailyAverage: z.boolean().default(true),
+});
+
 export const NotificationOptionsSchema = z.object({
   telegram: z
     .object({
@@ -158,6 +183,11 @@ export const NotificationOptionsSchema = z.object({
       sendLogFileToTelegram: z.boolean().optional().default(true),
     })
     .optional(),
+  /**
+   * Monthly expense insights configuration.
+   * Reads from Google Sheets and sends a summary to Telegram.
+   */
+  insights: InsightsOptionsSchema.optional(),
 });
 
 export const LoggingOptionsSchema = z.object({

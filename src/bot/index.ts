@@ -9,6 +9,7 @@ import {
   sendJSON,
   sendPhotos,
 } from "./notifier.js";
+import { sendMonthlyInsights } from "./insights.js";
 
 const logger = createLogger("bot");
 
@@ -34,6 +35,9 @@ export async function runWithStorage(runScraper: Runner) {
       const summaryMessage = getSummaryMessages(results);
       await send(summaryMessage, "HTML");
       await saveResults(results);
+
+      // Send monthly insights after saving (so new transactions are included)
+      await sendMonthlyInsights();
     },
     async onError(e: Error, caller: string = "unknown") {
       await sendError(e, caller);

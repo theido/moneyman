@@ -54,6 +54,17 @@
       //   "enableOtp": false,
       //   // Maximum time in seconds to wait for OTP response (default: 300)
       //   "otpTimeoutSeconds": 300
+      // },
+      // Monthly expense insights - sends a summary of the current month after scraping
+      // Requires Google Sheets storage to be configured
+      // "insights": {
+      //   "enabled": true,
+      //   // Show breakdown of expenses by category (default: true)
+      //   "showCategories": true,
+      //   // Maximum number of top categories to show (default: 5)
+      //   "maxCategories": 5,
+      //   // Show daily average spending (default: true)
+      //   "showDailyAverage": true
       // }
     },
   },

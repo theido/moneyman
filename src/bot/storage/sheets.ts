@@ -10,8 +10,9 @@ import { TransactionStatuses } from "israeli-bank-scrapers/lib/transactions.js";
 import { sendError } from "../notifier.js";
 import { sendDeprecationMessage } from "../deprecationManager.js";
 import { createSaveStats } from "../saveStats.js";
-import { tableRow } from "../transactionTableRow.js";
+import { tableRow, TableHeaders } from "../transactionTableRow.js";
 import type { MoneymanConfig } from "../../config.js";
+import { parse } from "date-fns";
 
 const logger = createLogger("GoogleSheetsStorage");
 
@@ -167,4 +168,70 @@ export class GoogleSheetsStorage implements TransactionStorage {
       ? new Set(columns.value[0])
       : new Set<string>();
   }
+
+  /**
+   * Get all transactions from the Google Sheet for a specific month and year.
+   * Returns transactions with date, amount, description, category, and account.
+   */
+  async getTransactionsForMonth(
+    year: number,
+    month: number,
+  ): Promise<SheetTransaction[]> {
+    const [doc] = await Promise.all([this.getDoc()]);
+
+    const sheet = doc.sheetsByTitle[this.worksheetName];
+    assert(sheet, `Sheet ${this.worksheetName} not found`);
+
+    await sheet.loadHeaderRow();
+    logger(`Loaded header row: ${sheet.headerValues}`);
+
+    const rows = await sheet.getRows();
+    logger(`Loaded ${rows.length} rows from sheet`);
+
+    const transactions: SheetTransaction[] = [];
+
+    for (const row of rows) {
+      const dateStr = row.get("date");
+      if (!dateStr) continue;
+
+      // Parse date in dd/MM/yyyy format
+      const date = parse(dateStr, "dd/MM/yyyy", new Date());
+      if (isNaN(date.getTime())) {
+        logger(`Invalid date: ${dateStr}`);
+        continue;
+      }
+
+      // Filter by month and year
+      if (date.getFullYear() !== year || date.getMonth() + 1 !== month) {
+        continue;
+      }
+
+      const amount = parseFloat(row.get("amount") || "0");
+      if (isNaN(amount)) {
+        logger(`Invalid amount for row with date ${dateStr}`);
+        continue;
+      }
+
+      transactions.push({
+        date,
+        amount,
+        description: row.get("description") || "",
+        category: row.get("category") || "",
+        account: row.get("account") || "",
+        memo: row.get("memo") || "",
+      });
+    }
+
+    logger(`Found ${transactions.length} transactions for ${month}/${year}`);
+    return transactions;
+  }
+}
+
+export interface SheetTransaction {
+  date: Date;
+  amount: number;
+  description: string;
+  category: string;
+  account: string;
+  memo: string;
 }
