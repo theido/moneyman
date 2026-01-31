@@ -46,6 +46,7 @@ export type ScraperConfig = {
   parallelScrapers: number;
   accounts: Array<AccountConfig>;
   additionalTransactionInformation: boolean;
+  includeRawTransaction: boolean;
 };
 
 export type ImageWithCaption = {
