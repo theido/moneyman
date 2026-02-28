@@ -70,22 +70,26 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
   }
 
   const allTransactions = resultsToTransactions(results);
-  const txns = filterInsuranceVendorTransactions(allTransactions);
 
-  if (txns.length === 0) {
-    await send("No positive transactions found, skipping save");
+  if (allTransactions.length === 0) {
+    await send("No transactions found, skipping save");
     return;
   }
-  // use invoice creator to create invoices for the filtered txns
-  let invoiceResults: TransactionRow[] = txns;
+
+  // Create invoices for filtered insurance vendor transactions
   if (config.storage.invoice) {
-    const invoiceCreator = new InvoiceCreator(config);
-    try {
-      invoiceResults = await invoiceCreator.createInvoicesForTransactions(txns);
-      baseLogger("Invoice creation results:", invoiceResults);
-    } catch (e) {
-      baseLogger("Error creating invoices:", e);
-      await sendError(e, "InvoiceCreator");
+    const txns = filterInsuranceVendorTransactions(allTransactions);
+    if (txns.length > 0) {
+      const invoiceCreator = new InvoiceCreator(config);
+      try {
+        await invoiceCreator.createInvoicesForTransactions(txns);
+        baseLogger("Invoice creation completed for", txns.length, "transactions");
+      } catch (e) {
+        baseLogger("Error creating invoices:", e);
+        await sendError(e, "InvoiceCreator");
+      }
+    } else {
+      baseLogger("No insurance vendor transactions found for invoice creation");
     }
   }
 
@@ -97,10 +101,10 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
 
       return loggerContextStore.run({ prefix: `[${name}]` }, async () => {
         try {
-          logger(`saving ${invoiceResults.length} transactions`);
+          logger(`saving ${allTransactions.length} transactions`);
           const message = await send(saving(name));
           const start = performance.now();
-          const stats = await storage.saveTransactions(invoiceResults, async (step) => {
+          const stats = await storage.saveTransactions(allTransactions, async (step) => {
             steps.at(-1)?.end();
             steps.push(new Timer(step));
             await editMessage(message?.message_id, saving(name, steps));
