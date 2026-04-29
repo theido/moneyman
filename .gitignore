@@ -10,3 +10,4 @@ dst/
 output
 moneyman.invoices.conf.jsonc
 firebase-debug.log
+.claude/settings.local.json
