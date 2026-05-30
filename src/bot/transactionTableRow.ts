@@ -53,7 +53,8 @@ export function tableRow(
     // Assuming the transaction is not pending, so we can use the original currency as the charged currency
     chargedCurrency:
       normalizeCurrency(tx.chargedCurrency) ||
-      normalizeCurrency(tx.originalCurrency),
+      normalizeCurrency(tx.originalCurrency) ||
+      "",
     pdf_link: tx.pdf_link,
     doc_number: tx.doc_number,
   };

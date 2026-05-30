@@ -32,12 +32,27 @@ export type CategoryDef = {
   eq?: Array<string>;
 };
 
+export interface AccountStatus {
+  companyId: string;
+  success: boolean;
+  errorType?: string;
+  errorMessage?: string;
+  accountCount?: number;
+  txnCount?: number;
+}
+
+export interface SaveContext {
+  accountResults?: AccountStatus[];
+}
+
 export interface TransactionStorage {
   canSave(): boolean;
   saveTransactions(
     txns: Array<TransactionRow>,
     onProgress: (status: string) => Promise<void>,
+    context?: SaveContext,
   ): Promise<SaveStats>;
+  sendLogs?(logs: string): Promise<void>;
 }
 
 export type ScraperConfig = {
@@ -58,7 +73,7 @@ export interface RunnerHooks {
   onBeforeStart(): Promise<void>;
   onStatusChanged(rows: string[], totalTime?: number): Promise<void>;
   onResultsReady(results: AccountScrapeResult[]): Promise<void>;
-  onError(e: Error, caller?: string): Promise<void>;
+  onError(e: unknown, caller?: string): Promise<void>;
   failureScreenshotsHandler: (photos: ImageWithCaption[]) => Promise<unknown>;
 }
 export type Runner = (hooks: RunnerHooks) => Promise<void>;

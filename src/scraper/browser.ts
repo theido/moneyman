@@ -4,7 +4,7 @@ import puppeteer, {
   type Browser,
   type BrowserContext,
   type Page,
-  type PuppeteerLaunchOptions,
+  type LaunchOptions,
 } from "puppeteer";
 import { createLogger } from "../utils/logger.js";
 import {
@@ -36,7 +36,7 @@ export async function createBrowser(): Promise<Browser> {
     executablePath: browserExecutablePath,
     // Hide the "Chrome is being controlled by automated software" marker.
     ignoreDefaultArgs: ["--enable-automation"],
-  } satisfies PuppeteerLaunchOptions;
+  } satisfies LaunchOptions;
 
   logger("Creating browser", options);
   return puppeteer.launch(options);
@@ -148,10 +148,10 @@ async function dismissPrivacyBanner(page: Page): Promise<void> {
     // First, try to find by text content - this is the most reliable method
     const buttonFound = await page.evaluate(() => {
       // Look for buttons containing the dismiss text
-      const buttons = Array.from(document.querySelectorAll('button, a'));
+      const buttons = Array.from(document.querySelectorAll("button, a"));
       for (const button of buttons) {
-        const text = button.textContent?.trim() || '';
-        if (text.includes('הבנתי') && text.includes('תודה')) {
+        const text = button.textContent?.trim() || "";
+        if (text.includes("הבנתי") && text.includes("תודה")) {
           (button as HTMLElement).click();
           return true;
         }
@@ -170,9 +170,15 @@ async function dismissPrivacyBanner(page: Page): Promise<void> {
       // Only target actual cookie/privacy consent banners, not login forms or other modals.
       // Use IDs/classes that are specific to consent banners to avoid false positives.
       const consentSelectors = [
-        '[id*="cookie"]', '[id*="consent"]', '[id*="gdpr"]', '[id*="privacy"]',
-        '[class*="cookie"]', '[class*="consent"]', '[class*="gdpr"]',
-        '[aria-label*="cookie"]', '[aria-label*="consent"]',
+        '[id*="cookie"]',
+        '[id*="consent"]',
+        '[id*="gdpr"]',
+        '[id*="privacy"]',
+        '[class*="cookie"]',
+        '[class*="consent"]',
+        '[class*="gdpr"]',
+        '[aria-label*="cookie"]',
+        '[aria-label*="consent"]',
       ];
 
       for (const selector of consentSelectors) {
@@ -180,16 +186,24 @@ async function dismissPrivacyBanner(page: Page): Promise<void> {
         if (!banner) continue;
 
         const style = window.getComputedStyle(banner as Element);
-        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        if (style.display === "none" || style.visibility === "hidden") continue;
 
-        const buttons = banner.querySelectorAll('button, a[class*="button"], a[role="button"]');
+        const buttons = banner.querySelectorAll(
+          'button, a[class*="button"], a[role="button"]',
+        );
         for (const button of Array.from(buttons).reverse()) {
-          const text = button.textContent?.trim() || '';
-          const className = button.className || '';
+          const text = button.textContent?.trim() || "";
+          const className = button.className || "";
 
-          if (text.includes('הבנתי') || text.includes('תודה') || text.includes('אישור') ||
-            className.includes('close') || className.includes('dismiss') ||
-            className.includes('accept') || className.includes('ok')) {
+          if (
+            text.includes("הבנתי") ||
+            text.includes("תודה") ||
+            text.includes("אישור") ||
+            className.includes("close") ||
+            className.includes("dismiss") ||
+            className.includes("accept") ||
+            className.includes("ok")
+          ) {
             (button as HTMLElement).click();
             return true;
           }
