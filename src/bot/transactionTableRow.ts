@@ -7,6 +7,7 @@ const currentDate = format(Date.now(), "yyyy-MM-dd");
 
 export const TableHeaders = [
   "date",
+  "processedDate",
   "amount",
   "description",
   "memo",
@@ -37,6 +38,9 @@ export function tableRow(
 ): TableRow {
   const baseRow = {
     date: format(parseISO(tx.date), "dd/MM/yyyy", {}),
+    processedDate: tx.processedDate
+      ? format(parseISO(tx.processedDate), "dd/MM/yyyy", {})
+      : "",
     amount: tx.chargedAmount,
     description: tx.description,
     memo: tx.memo ?? "",
