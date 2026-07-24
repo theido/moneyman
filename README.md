@@ -29,6 +29,8 @@ By default, this workflow will run twice daily at 10:05 and 22:05 UTC (12:05 and
 
 Since logs are public for public repos, most logs are off by default and the progress and error messages will be sent via Telegram.
 
+For public forks, GitHub may disable scheduled workflows after 60 days without repository activity. If you rely on scheduled scraping, keep the default branch active or re-enable the workflow from the Actions page when prompted.
+
 #### Setup
 
 1. Fork the [moneyman](https://github.com/daniel-hauser/moneyman) repo to your account
