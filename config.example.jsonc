@@ -27,7 +27,18 @@
     // "invoice": {
     //   "baseUrl": "https://your-invoice-api-url.com",
     //   "developerEmail": "your-email@example.com",
-    //   "apiKey": "your-api-key"
+    //   "apiKey": "your-api-key",
+    //   "customerCrnByVendor": {
+    //     "ילין": "513611509",
+    //     "אלטשולר": "513173393",
+    //     "מור": "514956465",
+    //     "אנליסט": "511880460",
+    //     "מגדל": "520004896",
+    //     "כלל": "520024647",
+    //     "הראל": "520004078",
+    //     "מנורה": "520042540",
+    //     "פניקס": "520023185"
+    //   }
     // },
     // Other options: googleSheets, ynab, azure, buxfer, actual, webPost, sql
   },

@@ -95,6 +95,18 @@ export const InvoiceSchema = z.object({
   baseUrl: z.url({ error: "Invalid invoice base URL" }),
   developerEmail: z.string().email({ error: "Invalid developer email" }),
   apiKey: z.string().min(1, { error: "Invoice API key is required" }),
+  customerCrn: z
+    .string()
+    .regex(/^\d+$/, { error: "Customer CRN must contain digits only" })
+    .optional(),
+  customerCrnByVendor: z
+    .record(
+      z.string(),
+      z
+        .string()
+        .regex(/^\d+$/, { error: "Customer CRN must contain digits only" }),
+    )
+    .optional(),
 });
 
 // Storage configuration schema
