@@ -1,8 +1,22 @@
 import { jest } from "@jest/globals";
+
+const mockSend = jest.fn(() => Promise.resolve(undefined));
+const mockSendError = jest.fn(() => Promise.resolve(undefined));
+
+jest.mock("../notifier.js", () => ({
+  __esModule: true,
+  send: mockSend,
+  sendError: mockSendError,
+}));
+
 import { InvoiceCreator } from "./InvoiceCreator.js";
 import { config, transactionRow } from "../../utils/tests.js";
 
 describe("InvoiceCreator", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("includes the configured customer CRN in the EZcount request", async () => {
     const mockFetch = jest
       .fn<typeof fetch>()
@@ -49,6 +63,44 @@ describe("InvoiceCreator", () => {
     expect(JSON.parse(String(request?.body))).toMatchObject({
       customer_crn: "515151515",
     });
+  });
+
+  it("sends invoice success and failure notifications", async () => {
+    const mockFetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ pdf_link: "https://pdf", doc_number: "123" }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }));
+    globalThis.fetch = mockFetch;
+
+    const invoiceConfig = config();
+    invoiceConfig.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "api-key",
+    };
+
+    const creator = new InvoiceCreator(invoiceConfig);
+    await creator.createInvoicesForTransactions([
+      transactionRow({ description: "הראל ביטוח" }),
+      transactionRow({ description: "כלל ביטוח" }),
+    ]);
+
+    expect(mockSendError).toHaveBeenCalledTimes(1);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.stringContaining("✅ Invoice created for הראל ביטוח"),
+    );
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.stringContaining("https://pdf"),
+    );
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "🧾 InvoiceCreator finished: 1/2 created, 1 failed",
+      ),
+    );
   });
 
   it("maps every configured vendor to its CRN without making a real request", async () => {

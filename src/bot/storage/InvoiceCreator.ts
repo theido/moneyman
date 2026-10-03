@@ -1,5 +1,6 @@
 import { TransactionRow } from "../../types";
 import type { MoneymanConfig } from "../../config.js";
+import { send, sendError } from "../notifier.js";
 
 export class InvoiceCreator {
   baseUrl: string;
@@ -89,15 +90,36 @@ export class InvoiceCreator {
   async createInvoicesForTransactions(
     txns: Array<TransactionRow>,
   ): Promise<TransactionRow[]> {
+    let created = 0;
+    let failed = 0;
+
     for (const txn of txns) {
       try {
         const res = await this.createInvoiceForTransaction(txn);
         if (res.pdf_link) txn.pdf_link = res.pdf_link;
         if (res.doc_number) txn.doc_number = res.doc_number;
-      } catch (e: any) {
-        // Optionally, you can add error handling fields to txn here
+        created += 1;
+
+        const invoiceLabel = txn.doc_number
+          ? `#${txn.doc_number}`
+          : txn.uniqueId || txn.hash || txn.description;
+        const invoiceUrl = txn.pdf_link ? `\n${txn.pdf_link}` : "";
+        await send(
+          `✅ Invoice created for ${txn.description} (${invoiceLabel})${invoiceUrl}`,
+        );
+      } catch (e) {
+        failed += 1;
+        await sendError(
+          e,
+          `InvoiceCreator failed for ${txn.description} (${txn.uniqueId || txn.hash || "unknown"})`,
+        );
       }
     }
+
+    await send(
+      `🧾 InvoiceCreator finished: ${created}/${txns.length} created, ${failed} failed`,
+    );
+
     return txns;
   }
 }

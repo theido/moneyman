@@ -78,7 +78,7 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
     return;
   }
 
-  const allTransactions = resultsToTransactions(results);
+  const allTransactions = await resultsToTransactions(results);
 
   if (allTransactions.length === 0) {
     await send("No transactions found, skipping save");
@@ -146,16 +146,16 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
           );
         } catch (e) {
           logger(`error saving transactions`, e);
-          sendError(e, `saveTransactions::${name}`);
+          await sendError(e, `saveTransactions::${name}`);
         }
       });
     }),
   );
 }
 
-function resultsToTransactions(
+async function resultsToTransactions(
   results: Array<AccountScrapeResult>,
-): Array<TransactionRow> {
+): Promise<Array<TransactionRow>> {
   const txns: Array<TransactionRow> = [];
 
   for (let { result, companyId } of results) {
@@ -179,7 +179,7 @@ function resultsToTransactions(
             // Note: The full transaction object is intentionally included for debugging
             // purposes as requested in the issue. This is sent via Telegram to help
             // diagnose malformed transactions.
-            sendError(
+            await sendError(
               error,
               `Failed to process transaction for ${companyId} account ${account.accountNumber}:\n${JSON.stringify(tx, null, 2)}`,
             );
