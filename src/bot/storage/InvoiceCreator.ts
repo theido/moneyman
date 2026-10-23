@@ -1,4 +1,8 @@
-import { TransactionRow } from "../../types";
+import type { TransactionRow } from "../../types.js";
+import { getInvoiceHistory, type InvoiceMapping } from "./InvoiceHistory.js";
+import { createLogger } from "../../utils/logger.js";
+
+const logger = createLogger("InvoiceCreator");
 import type { MoneymanConfig } from "../../config.js";
 import { send, sendError } from "../notifier.js";
 
@@ -9,7 +13,7 @@ export class InvoiceCreator {
   customerCrn?: string;
   customerCrnByVendor?: Record<string, string>;
 
-  constructor(config: MoneymanConfig) {
+  constructor(private config: MoneymanConfig) {
     const invoiceConfig = config.storage.invoice;
     if (!invoiceConfig) {
       throw new Error(
@@ -42,6 +46,9 @@ export class InvoiceCreator {
   }
 
   async createInvoiceForTransaction(txn: TransactionRow) {
+    if (!txn.uniqueId?.trim()) {
+      throw new Error("Invoice transaction_id is required");
+    }
     // You can adjust these values as needed
     const price = Math.abs(txn.originalAmount);
     const date = this.formatDate(txn.processedDate);
@@ -84,42 +91,119 @@ export class InvoiceCreator {
         `Failed to create invoice for txn ${txn.uniqueId || txn.hash}`,
       );
     }
-    return response.json();
+    const result = await response.json();
+    if (result && typeof result === "object" && result.errNum != null) {
+      // Do not log the full response: provider errors can echo request secrets.
+      throw new Error(`EZcount error ${result.errNum}`);
+    }
+    if (
+      !result ||
+      result.success !== true ||
+      typeof result.pdf_link !== "string" ||
+      !result.pdf_link ||
+      !["string", "number"].includes(typeof result.doc_number) ||
+      !String(result.doc_number)
+    ) {
+      throw new Error("Invalid EZcount success response");
+    }
+    return {
+      pdf_link: result.pdf_link as string,
+      doc_number: String(result.doc_number),
+    };
+  }
+
+  private async notify(action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action();
+    } catch {
+      // Delivery failure is not invoice failure; do not retry through the same notifier.
+      logger("Invoice notification delivery failed");
+    }
   }
 
   async createInvoicesForTransactions(
     txns: Array<TransactionRow>,
   ): Promise<TransactionRow[]> {
-    let created = 0;
+    let recorded = 0;
+    let existing = 0;
     let failed = 0;
-
+    let unclassified = 0;
+    let history: Map<string, InvoiceMapping> | undefined;
+    try {
+      history = await getInvoiceHistory(this.config);
+    } catch {
+      logger(
+        "Invoice history unavailable; new/existing classification disabled",
+      );
+      await this.notify(() =>
+        sendError(
+          new Error(
+            "Invoice history unavailable; successes will be unclassified",
+          ),
+          "InvoiceCreator history",
+        ),
+      );
+    }
+    // Only supplementary deduplication within this batch; cross-run state comes
+    // from durable history, never a process-local cache.
+    const completed = new Map<string, InvoiceMapping>();
     for (const txn of txns) {
+      const previous =
+        completed.get(txn.uniqueId) ||
+        history?.get(txn.uniqueId) ||
+        history?.get(txn.hash);
+      const knownExisting = Boolean(
+        previous?.doc_number ||
+        previous?.pdf_link ||
+        txn.doc_number ||
+        txn.pdf_link,
+      );
+      if (previous?.pdf_link) txn.pdf_link = previous.pdf_link;
+      if (previous?.doc_number) txn.doc_number = previous.doc_number;
       try {
-        const res = await this.createInvoiceForTransaction(txn);
-        if (res.pdf_link) txn.pdf_link = res.pdf_link;
-        if (res.doc_number) txn.doc_number = res.doc_number;
-        created += 1;
-
-        const invoiceLabel = txn.doc_number
-          ? `#${txn.doc_number}`
-          : txn.uniqueId || txn.hash || txn.description;
-        const invoiceUrl = txn.pdf_link ? `\n${txn.pdf_link}` : "";
-        await send(
-          `✅ Invoice created for ${txn.description} (${invoiceLabel})${invoiceUrl}`,
-        );
-      } catch (e) {
+        if (!txn.pdf_link || !txn.doc_number) {
+          const result = await this.createInvoiceForTransaction(txn);
+          txn.pdf_link = result.pdf_link;
+          txn.doc_number = result.doc_number;
+        }
+      } catch (error) {
         failed += 1;
-        await sendError(
-          e,
-          `InvoiceCreator failed for ${txn.description} (${txn.uniqueId || txn.hash || "unknown"})`,
+        await this.notify(() =>
+          sendError(
+            error,
+            `InvoiceCreator failed for ${txn.description} (${txn.uniqueId || txn.hash || "unknown"})`,
+          ),
         );
+        continue;
+      }
+      completed.set(txn.uniqueId, {
+        pdf_link: txn.pdf_link,
+        doc_number: txn.doc_number,
+      });
+      if (knownExisting) {
+        existing += 1;
+      } else if (history && !previous) {
+        // EZcount has no documented replay flag. Absence from our history means
+        // newly recorded here, NOT proof that EZcount created a new document.
+        recorded += 1;
+        await this.notify(() =>
+          send(
+            `✅ Invoice newly recorded for ${txn.description} (#${txn.doc_number})\n${txn.pdf_link}`,
+          ),
+        );
+      } else {
+        // No durable basis for distinguishing creation from transaction_id replay.
+        unclassified += 1;
       }
     }
-
-    await send(
-      `🧾 InvoiceCreator finished: ${created}/${txns.length} created, ${failed} failed`,
+    await this.notify(() =>
+      send(
+        `🧾 InvoiceCreator finished: ${recorded}/${txns.length} newly recorded, ${existing} existing, ${failed} failed` +
+          (unclassified
+            ? `, ${unclassified} unclassified (creation/replay unknown)`
+            : ""),
+      ),
     );
-
     return txns;
   }
 }

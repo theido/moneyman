@@ -9,18 +9,176 @@ jest.mock("../notifier.js", () => ({
   sendError: mockSendError,
 }));
 
+const mockGetInvoiceHistory =
+  jest.fn<
+    () => Promise<
+      Map<string, { pdf_link?: string; doc_number?: string }> | undefined
+    >
+  >();
+jest.mock("./InvoiceHistory.js", () => ({
+  getInvoiceHistory: mockGetInvoiceHistory,
+}));
+
 import { InvoiceCreator } from "./InvoiceCreator.js";
 import { config, transactionRow } from "../../utils/tests.js";
 
 describe("InvoiceCreator", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    mockSend.mockResolvedValue(undefined);
+    mockSendError.mockResolvedValue(undefined);
+    mockGetInvoiceHistory.mockResolvedValue(new Map());
+  });
+
+  it("preserves existing invoice mappings without sending another success", async () => {
+    const invoiceConfig = config();
+    invoiceConfig.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    globalThis.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          pdf_link: "https://pdf",
+          doc_number: "123",
+        }),
+      ),
+    );
+    const txn = transactionRow({ pdf_link: "https://pdf", doc_number: "123" });
+    await new InvoiceCreator(invoiceConfig).createInvoicesForTransactions([
+      txn,
+    ]);
+    expect(txn).toMatchObject({ pdf_link: "https://pdf", doc_number: "123" });
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(mockSend).toHaveBeenCalledWith(
+      "🧾 InvoiceCreator finished: 0/1 newly recorded, 1 existing, 0 failed",
+    );
+  });
+
+  it("loads prior invoice mappings on each fresh run, preserving storage metadata", async () => {
+    const invoiceConfig = config();
+    invoiceConfig.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    mockGetInvoiceHistory.mockResolvedValue(
+      new Map([["unique-1", { pdf_link: "https://pdf", doc_number: "123" }]]),
+    );
+    globalThis.fetch = jest.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://pdf",
+            doc_number: "123",
+          }),
+        ),
+    );
+    for (let run = 0; run < 2; run++) {
+      const txn = transactionRow({});
+      await new InvoiceCreator(invoiceConfig).createInvoicesForTransactions([
+        txn,
+      ]);
+      expect(txn).toMatchObject({ pdf_link: "https://pdf", doc_number: "123" });
+    }
+    expect(mockGetInvoiceHistory).toHaveBeenCalledTimes(2);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(mockSend).toHaveBeenCalledWith(
+      "🧾 InvoiceCreator finished: 0/1 newly recorded, 1 existing, 0 failed",
+    );
+  });
+
+  it("rejects an empty transaction_id before contacting EZcount", async () => {
+    const c = config();
+    c.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    globalThis.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          pdf_link: "https://pdf",
+          doc_number: "123",
+        }),
+      ),
+    );
+    await expect(
+      new InvoiceCreator(c).createInvoiceForTransaction(
+        transactionRow({ uniqueId: "" }),
+      ),
+    ).rejects.toThrow("Invoice transaction_id is required");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects EZcount business errors under HTTP 200", async () => {
+    const invoiceConfig = config();
+    invoiceConfig.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    globalThis.fetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ errNum: 1, errMsg: "api key is malformatted" }),
+        ),
+      );
+    await expect(
+      new InvoiceCreator(invoiceConfig).createInvoiceForTransaction(
+        transactionRow({}),
+      ),
+    ).rejects.toThrow("EZcount error 1");
+  });
+
+  it("does not count notification failures as invoice failures or stop the batch", async () => {
+    const invoiceConfig = config();
+    invoiceConfig.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    globalThis.fetch = jest.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://pdf",
+            doc_number: "123",
+          }),
+        ),
+    );
+    mockSend.mockRejectedValueOnce(new Error("Telegram unavailable"));
+    mockSendError.mockRejectedValueOnce(new Error("Telegram unavailable"));
+    const txns = [
+      transactionRow({ uniqueId: "one" }),
+      transactionRow({ uniqueId: "two" }),
+    ];
+    await expect(
+      new InvoiceCreator(invoiceConfig).createInvoicesForTransactions(txns),
+    ).resolves.toBe(txns);
+    expect(mockSend).toHaveBeenCalledWith(
+      "🧾 InvoiceCreator finished: 2/2 newly recorded, 0 existing, 0 failed",
+    );
   });
 
   it("includes the configured customer CRN in the EZcount request", async () => {
-    const mockFetch = jest
-      .fn<typeof fetch>()
-      .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const mockFetch = jest.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          pdf_link: "https://pdf",
+          doc_number: "123",
+        }),
+        { status: 200 },
+      ),
+    );
     globalThis.fetch = mockFetch;
 
     const invoiceConfig = config();
@@ -42,9 +200,16 @@ describe("InvoiceCreator", () => {
   });
 
   it("uses the CRN configured for the matching vendor", async () => {
-    const mockFetch = jest
-      .fn<typeof fetch>()
-      .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const mockFetch = jest.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          pdf_link: "https://pdf",
+          doc_number: "123",
+        }),
+        { status: 200 },
+      ),
+    );
     globalThis.fetch = mockFetch;
 
     const invoiceConfig = config();
@@ -69,9 +234,16 @@ describe("InvoiceCreator", () => {
     const mockFetch = jest
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ pdf_link: "https://pdf", doc_number: "123" }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://pdf",
+            doc_number: "123",
+          }),
+          {
+            status: 200,
+          },
+        ),
       )
       .mockResolvedValueOnce(new Response("boom", { status: 500 }));
     globalThis.fetch = mockFetch;
@@ -86,29 +258,228 @@ describe("InvoiceCreator", () => {
     const creator = new InvoiceCreator(invoiceConfig);
     await creator.createInvoicesForTransactions([
       transactionRow({ description: "הראל ביטוח" }),
-      transactionRow({ description: "כלל ביטוח" }),
+      transactionRow({ description: "כלל ביטוח", uniqueId: "unique-2" }),
     ]);
 
     expect(mockSendError).toHaveBeenCalledTimes(1);
     expect(mockSend).toHaveBeenCalledWith(
-      expect.stringContaining("✅ Invoice created for הראל ביטוח"),
+      expect.stringContaining("✅ Invoice newly recorded for הראל ביטוח"),
     );
     expect(mockSend).toHaveBeenCalledWith(
       expect.stringContaining("https://pdf"),
     );
     expect(mockSend).toHaveBeenCalledWith(
       expect.stringContaining(
-        "🧾 InvoiceCreator finished: 1/2 created, 1 failed",
+        "🧾 InvoiceCreator finished: 1/2 newly recorded, 0 existing, 1 failed",
       ),
     );
   });
 
-  it("maps every configured vendor to its CRN without making a real request", async () => {
-    const mockFetch = jest
+  it.each([
+    { success: false, errNum: 7, errMsg: "invalid" },
+    { success: false },
+    {},
+    null,
+    { success: true },
+    { success: true, pdf_link: "https://pdf" },
+    { success: true, pdf_link: "", doc_number: "123" },
+    { success: true, pdf_link: "https://pdf", doc_number: {} },
+  ])("does not count an invalid HTTP 200 body as success: %j", async (body) => {
+    const c = config();
+    c.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    globalThis.fetch = jest
       .fn<typeof fetch>()
-      .mockImplementation(
-        async () => new Response(JSON.stringify({}), { status: 200 }),
+      .mockResolvedValue(new Response(JSON.stringify(body)));
+    await new InvoiceCreator(c).createInvoicesForTransactions([
+      transactionRow({}),
+    ]);
+    expect(mockSendError).toHaveBeenCalledTimes(1);
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(mockSend).toHaveBeenCalledWith(
+      "🧾 InvoiceCreator finished: 0/1 newly recorded, 0 existing, 1 failed",
+    );
+  });
+
+  it.each(["missing", "failed"])(
+    "suppresses individual successes when invoice history is %s",
+    async (mode) => {
+      const c = config();
+      c.storage.invoice = {
+        baseUrl: "https://example.com",
+        developerEmail: "developer@example.com",
+        apiKey: "test-key",
+      };
+      if (mode === "missing")
+        mockGetInvoiceHistory.mockResolvedValue(undefined);
+      else
+        mockGetInvoiceHistory.mockRejectedValue(
+          new Error("history unavailable"),
+        );
+      globalThis.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://pdf",
+            doc_number: "123",
+          }),
+        ),
       );
+      const txn = transactionRow({});
+      await new InvoiceCreator(c).createInvoicesForTransactions([txn]);
+      expect(txn).toMatchObject({ pdf_link: "https://pdf", doc_number: "123" });
+      expect(mockSend).toHaveBeenCalledTimes(1);
+      expect(mockSend).toHaveBeenCalledWith(
+        "🧾 InvoiceCreator finished: 0/1 newly recorded, 0 existing, 0 failed, 1 unclassified (creation/replay unknown)",
+      );
+    },
+  );
+
+  it("does not repeatedly notify for a saved transaction whose invoice mapping is missing", async () => {
+    const c = config();
+    c.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    mockGetInvoiceHistory.mockResolvedValue(new Map([["unique-1", {}]]));
+    globalThis.fetch = jest.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://pdf",
+            doc_number: "123",
+          }),
+        ),
+    );
+    for (let run = 0; run < 2; run++) {
+      await new InvoiceCreator(c).createInvoicesForTransactions([
+        transactionRow({}),
+      ]);
+    }
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(mockSend).toHaveBeenCalledWith(
+      "🧾 InvoiceCreator finished: 0/1 newly recorded, 0 existing, 0 failed, 1 unclassified (creation/replay unknown)",
+    );
+  });
+
+  it("reports mixed newly recorded, existing, and failed invoices exactly once", async () => {
+    const c = config();
+    c.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    mockGetInvoiceHistory.mockResolvedValue(
+      new Map([
+        ["old-hash", { pdf_link: "https://old", doc_number: "100" }],
+        ["partial", { doc_number: "200" }],
+      ]),
+    );
+    globalThis.fetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://partial",
+            doc_number: "200",
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://new",
+            doc_number: 300,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }));
+    const txns = [
+      transactionRow({ uniqueId: "old", hash: "old-hash" }),
+      transactionRow({ uniqueId: "partial" }),
+      transactionRow({ uniqueId: "new" }),
+      transactionRow({ uniqueId: "new" }),
+      transactionRow({ uniqueId: "failure" }),
+    ];
+    await new InvoiceCreator(c).createInvoicesForTransactions(txns);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+    expect(txns[0]).toMatchObject({
+      pdf_link: "https://old",
+      doc_number: "100",
+    });
+    expect(txns[1]).toMatchObject({
+      pdf_link: "https://partial",
+      doc_number: "200",
+    });
+    expect(txns[2]).toMatchObject({
+      pdf_link: "https://new",
+      doc_number: "300",
+    });
+    expect(txns[3]).toMatchObject({
+      pdf_link: "https://new",
+      doc_number: "300",
+    });
+    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(mockSendError).toHaveBeenCalledTimes(1);
+    expect(mockSend).toHaveBeenCalledWith(
+      "🧾 InvoiceCreator finished: 1/5 newly recorded, 3 existing, 1 failed",
+    );
+  });
+
+  it("continues after failure notification rejection and tolerates summary rejection", async () => {
+    const c = config();
+    c.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "test-key",
+    };
+    mockSendError.mockRejectedValue(new Error("Telegram unavailable"));
+    mockSend.mockRejectedValue(new Error("Telegram unavailable"));
+    globalThis.fetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://pdf",
+            doc_number: "123",
+          }),
+        ),
+      );
+    const txns = [
+      transactionRow({ uniqueId: "one" }),
+      transactionRow({ uniqueId: "two" }),
+    ];
+    await expect(
+      new InvoiceCreator(c).createInvoicesForTransactions(txns),
+    ).resolves.toBe(txns);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(mockSend).toHaveBeenCalledWith(
+      "🧾 InvoiceCreator finished: 1/2 newly recorded, 0 existing, 1 failed",
+    );
+  });
+
+  it("maps every configured vendor to its CRN without making a real request", async () => {
+    const mockFetch = jest.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            pdf_link: "https://pdf",
+            doc_number: "123",
+          }),
+          { status: 200 },
+        ),
+    );
     globalThis.fetch = mockFetch;
 
     const vendorCrns = {
