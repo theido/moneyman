@@ -26,37 +26,9 @@ import { MondayStorage } from "./monday.js";
 import { SqlStorage } from "./sql.js";
 import { MoneymanDashStorage } from "./moneyman.js";
 
+import { filterInsuranceVendorTransactions } from "./insurance-vendors.js";
+
 const baseLogger = createLogger("storage");
-
-/**
- * Filters transactions to only include those from insurance vendors
- * @param transactions Array of transactions to filter
- * @returns Filtered transactions that match insurance vendors
- */
-function filterInsuranceVendorTransactions(
-  transactions: TransactionRow[],
-): TransactionRow[] {
-  const vendors = [
-    "ילין",
-    "אלטשולר",
-    "מור",
-    "אנליסט",
-    "מגדל",
-    "כלל",
-    "הראל",
-    "מנורה",
-    'פניקס" חיים-י',
-  ];
-  const vendorRegex = new RegExp(vendors.join("|"));
-
-  return transactions
-    .filter((txn) => txn.originalAmount > 0)
-    .filter(
-      (txn) =>
-        typeof txn.description === "string" &&
-        vendorRegex.test(txn.description),
-    );
-}
 
 export const storages = [
   new LocalJsonStorage(config),

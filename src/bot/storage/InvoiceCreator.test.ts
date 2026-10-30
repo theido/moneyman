@@ -468,6 +468,46 @@ describe("InvoiceCreator", () => {
     );
   });
 
+  it.each([
+    ["פספורטכארד-י", "514831742"],
+    ["הפניקס חברה-י", "520023185"],
+  ])("uses the configured CRN for %s", async (description, customerCrn) => {
+    const originalFetch = globalThis.fetch;
+    const mockFetch = jest.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          pdf_link: "https://pdf",
+          doc_number: "123",
+        }),
+        { status: 200 },
+      ),
+    );
+    globalThis.fetch = mockFetch;
+    try {
+      const invoiceConfig = config();
+      invoiceConfig.storage.invoice = {
+        baseUrl: "https://example.com",
+        developerEmail: "developer@example.com",
+        apiKey: "api-key",
+        customerCrnByVendor: {
+          "פספורטכארד-י": "514831742",
+          פניקס: "520023185",
+        },
+      };
+      await new InvoiceCreator(invoiceConfig).createInvoiceForTransaction(
+        transactionRow({ description }),
+      );
+      const [, request] = mockFetch.mock.calls[0];
+      expect(JSON.parse(String(request?.body))).toMatchObject({
+        customer_name: description,
+        customer_crn: customerCrn,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("maps every configured vendor to its CRN without making a real request", async () => {
     const mockFetch = jest.fn<typeof fetch>().mockImplementation(
       async () =>
