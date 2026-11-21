@@ -2,8 +2,8 @@ import type { CompanyTypes } from "israeli-bank-scrapers";
 import puppeteer, {
   TargetType,
   type Browser,
-  type BrowserContext,
   type Page,
+  type BrowserContext,
   type LaunchOptions,
 } from "puppeteer";
 import { createLogger } from "../utils/logger.js";
@@ -11,9 +11,8 @@ import {
   runInLoggerContext,
   loggerContextStore,
 } from "../utils/asyncContext.js";
-import { initDomainTracking } from "../security/domains.js";
+import type { DomainTracker } from "../security/domains.js";
 import { solveTurnstile } from "./cloudflareSolver.js";
-import { config } from "../config.js";
 
 export const browserArgs = [
   "--disable-dev-shm-usage",
@@ -21,19 +20,22 @@ export const browserArgs = [
   // Reduce easy automation fingerprints used by anti-bot providers.
   "--disable-blink-features=AutomationControlled",
 ];
-export const browserExecutablePath =
-  config.options.scraping.puppeteerExecutablePath || undefined;
-
 const logger = createLogger("browser");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function createBrowser(): Promise<Browser> {
+export async function createBrowser(
+  executablePath?: string,
+  signal?: AbortSignal,
+  headless = true,
+): Promise<Browser> {
   const options = {
+    headless,
     args: browserArgs,
-    executablePath: browserExecutablePath,
+    executablePath: executablePath || undefined,
+    signal,
     // Hide the "Chrome is being controlled by automated software" marker.
     ignoreDefaultArgs: ["--enable-automation"],
   } satisfies LaunchOptions;
@@ -45,6 +47,7 @@ export async function createBrowser(): Promise<Browser> {
 export async function createSecureBrowserContext(
   browser: Browser,
   companyId: CompanyTypes,
+  initDomainTracking: DomainTracker["initDomainTracking"],
 ): Promise<BrowserContext> {
   const context = await browser.createBrowserContext();
   await initDomainTracking(context, companyId);

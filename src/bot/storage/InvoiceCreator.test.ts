@@ -19,8 +19,9 @@ jest.mock("./InvoiceHistory.js", () => ({
   getInvoiceHistory: mockGetInvoiceHistory,
 }));
 
-import { InvoiceCreator } from "./InvoiceCreator.js";
 import { config, transactionRow } from "../../utils/tests.js";
+const { InvoiceCreator } =
+  require("./InvoiceCreator.js") as typeof import("./InvoiceCreator.js");
 
 describe("InvoiceCreator", () => {
   beforeEach(() => {

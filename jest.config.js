@@ -1,9 +1,27 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} */
+/** @type {import('jest').Config} */
 export default {
-  preset: "ts-jest",
+  transform: {
+    "^.+\\.tsx?$": [
+      "@swc/jest",
+      {
+        jsc: {
+          parser: {
+            syntax: "typescript",
+          },
+          target: "es2022",
+        },
+        module: {
+          type: "commonjs",
+        },
+      },
+    ],
+  },
   testEnvironment: "node",
-  rootDir: "./src",
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.cjs"],
+  roots: ["<rootDir>/src", "<rootDir>/report"],
   moduleNameMapper: {
+    "^(?:\\./(?:report/)?|\\.\\./src/bot/report/)assets\\.generated\\.js$":
+      "<rootDir>/dst/bot/report/assets.generated.js",
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
   },
   reporters: ["default", ["github-actions", { silent: false }], "summary"],

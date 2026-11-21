@@ -24,7 +24,7 @@ export function filterInsuranceVendorTransactions(
   const vendorRegex = new RegExp(vendors.join("|"));
 
   return transactions
-    .filter((txn) => txn.originalAmount > 0)
+    .filter((txn) => txn.originalAmount != null && txn.originalAmount > 0)
     .filter(
       (txn) =>
         typeof txn.description === "string" &&

@@ -1,6 +1,15 @@
 import { formatISO, parseISO, roundToNearestMinutes } from "date-fns";
 import type { CompanyTypes } from "israeli-bank-scrapers";
-import type { Transaction } from "israeli-bank-scrapers/lib/transactions.js";
+import {
+  TransactionStatuses,
+  type Transaction,
+} from "israeli-bank-scrapers/lib/transactions.js";
+import type { TransactionRow } from "../../types.js";
+import { sha256 } from "../../utils/utils.js";
+
+export function nonPendingTransactions(txns: TransactionRow[]) {
+  return txns.filter((tx) => tx.status !== TransactionStatuses.Pending);
+}
 
 /**
  * Generates a hash for a transaction that can be used to ~uniquely identify it.
@@ -48,4 +57,17 @@ export function transactionUniqueId(
     tx.identifier || `${tx.description}_${tx.memo}`,
   ];
   return parts.map((p) => String(p ?? "").trim()).join("_");
+}
+
+/**
+ * Creates a deterministic, stable hash of a string.
+ *
+ * Used for external import ids (e.g. YNAB's `import_id`), so it must stay
+ * stable across releases and runs - therefore it uses node's built-in sha256
+ * and not a library that may change its algorithm.
+ *
+ * The result is truncated to 32 characters to fit YNAB's 36 character limit.
+ */
+export function stableHash(value: string): string {
+  return sha256(value, "hex").slice(0, 32);
 }

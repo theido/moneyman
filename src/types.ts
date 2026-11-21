@@ -9,6 +9,7 @@ export type { Transaction };
 
 export type AccountConfig = ScraperCredentials & {
   companyId: CompanyTypes;
+  scrapeId?: string;
 };
 
 export interface TransactionRow extends Transaction {
@@ -22,6 +23,7 @@ export interface TransactionRow extends Transaction {
 
 export interface AccountScrapeResult {
   companyId: CompanyTypes;
+  scrapeId?: string;
   result: ScraperScrapingResult;
 }
 
@@ -46,7 +48,13 @@ export interface SaveContext {
 }
 
 export interface TransactionStorage {
+  /**
+   * Receive pending transactions as well as completed ones. Defaults to false.
+   * Dual-output providers may still exclude pending from their structured output.
+   */
+  readonly supportsPendingTransactions?: boolean;
   canSave(): boolean;
+  /** Called with completed transactions unless supportsPendingTransactions is true. */
   saveTransactions(
     txns: Array<TransactionRow>,
     onProgress: (status: string) => Promise<void>,
@@ -69,7 +77,21 @@ export type ImageWithCaption = {
   caption: string;
 };
 
+export interface RunTiming {
+  id: string;
+  parentId?: string;
+  kind: "scraper" | "storage" | "step";
+  name: string;
+  companyId?: AccountScrapeResult["companyId"];
+  scrapeId?: string;
+  /** Epoch milliseconds, shared across the runner and scraper worker. */
+  startedAt: number;
+  endedAt?: number;
+  failed?: boolean;
+}
+
 export interface RunnerHooks {
+  onTiming?(timing: RunTiming): Promise<void> | void;
   onBeforeStart(): Promise<void>;
   onStatusChanged(rows: string[], totalTime?: number): Promise<void>;
   onResultsReady(results: AccountScrapeResult[]): Promise<void>;
@@ -77,3 +99,21 @@ export interface RunnerHooks {
   failureScreenshotsHandler: (photos: ImageWithCaption[]) => Promise<unknown>;
 }
 export type Runner = (hooks: RunnerHooks) => Promise<void>;
+
+export type RunTrigger = "manual" | "scheduled" | "startup";
+
+export type RunStatus = {
+  trigger: RunTrigger;
+  startedAt: Date;
+  endedAt: Date;
+  failed: boolean;
+  failedLogins?: Pick<AccountScrapeResult, "companyId" | "scrapeId">[];
+};
+
+export type RunHandle = {
+  /** Whether this call started a run. When false, `finished` resolves to undefined. */
+  started: boolean;
+  error?: string;
+  /** Settles when the run this handle started has finished. */
+  finished: Promise<RunStatus | undefined>;
+};

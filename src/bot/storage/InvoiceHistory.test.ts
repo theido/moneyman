@@ -19,8 +19,9 @@ const mockSpreadsheet = jest.fn(() => mockDoc);
 jest.mock("google-spreadsheet", () => ({ GoogleSpreadsheet: mockSpreadsheet }));
 jest.mock("google-auth-library", () => ({ JWT: mockJWT }));
 
-import { getInvoiceHistory } from "./InvoiceHistory.js";
 import { config } from "../../utils/tests.js";
+const { getInvoiceHistory } =
+  require("./InvoiceHistory.js") as typeof import("./InvoiceHistory.js");
 
 function historyConfig() {
   const c = config();

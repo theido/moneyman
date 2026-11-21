@@ -1,5 +1,5 @@
 import { format, parseISO } from "date-fns";
-import { systemName, config } from "../config.js";
+import { systemName, type MoneymanConfig } from "../config.js";
 import type { TransactionRow } from "../types.js";
 import { normalizeCurrency } from "../utils/currency.js";
 
@@ -7,7 +7,6 @@ const currentDate = format(Date.now(), "yyyy-MM-dd");
 
 export const TableHeaders = [
   "date",
-  "processedDate",
   "amount",
   "description",
   "memo",
@@ -19,6 +18,8 @@ export const TableHeaders = [
   "scraped by",
   "identifier",
   "chargedCurrency",
+  "pdf_link",
+  "doc_number",
   "raw",
 ] as const;
 
@@ -26,7 +27,7 @@ export type TableRow = Omit<
   Record<(typeof TableHeaders)[number], string>,
   "amount" | "raw"
 > & {
-  amount: number;
+  amount: number | null;
   pdf_link?: string;
   doc_number?: string;
   raw?: string;
@@ -35,21 +36,16 @@ export type TableRow = Omit<
 export function tableRow(
   tx: TransactionRow,
   includeRaw: boolean = false,
+  transactionHashType: MoneymanConfig["options"]["scraping"]["transactionHashType"] = "",
 ): TableRow {
   const baseRow = {
     date: format(parseISO(tx.date), "dd/MM/yyyy", {}),
-    processedDate: tx.processedDate
-      ? format(parseISO(tx.processedDate), "dd/MM/yyyy", {})
-      : "",
     amount: tx.chargedAmount,
     description: tx.description,
     memo: tx.memo ?? "",
     category: tx.category ?? "",
     account: tx.account,
-    hash:
-      config.options.scraping.transactionHashType === "moneyman"
-        ? tx.uniqueId
-        : tx.hash,
+    hash: transactionHashType === "moneyman" ? tx.uniqueId : tx.hash,
     comment: "",
     "scraped at": currentDate,
     "scraped by": systemName,
@@ -59,8 +55,8 @@ export function tableRow(
       normalizeCurrency(tx.chargedCurrency) ||
       normalizeCurrency(tx.originalCurrency) ||
       "",
-    pdf_link: tx.pdf_link,
-    doc_number: tx.doc_number,
+    pdf_link: tx.pdf_link ?? "",
+    doc_number: tx.doc_number ?? "",
   };
 
   return {
