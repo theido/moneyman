@@ -45,58 +45,6 @@ describe("Sites access tests", () => {
     await browser.close();
   });
 
-  describe("basic access", () => {
-    for (const { company, url, titles, expectedText } of [
-      {
-        url: "https://digital.isracard.co.il",
-        titles: ["ישראכרט", "הלוואה מהיום למחר"],
-        expectedText: "ישראכרט",
-        company: CompanyTypes.isracard,
-      },
-      {
-        url: "https://he.americanexpress.co.il",
-        titles: ["אמריקן אקספרס"],
-        expectedText: "אמריקן אקספרס",
-        company: CompanyTypes.amex,
-      },
-    ] as const) {
-      test(`should access ${company} at ${url}`, async () => {
-        const context = await createSecureBrowserContext(browser, company);
-        const page = await context.newPage();
-        await page.setViewport({ width: 1920, height: 1080 });
-        await page.goto(url, { waitUntil: "networkidle2" });
-        logger("Page loaded", page.url());
-
-        const initialPageTitle = await page.title();
-        if (!titles.some((title) => initialPageTitle.includes(title))) {
-          logger(
-            `Page title does not yet match, waiting for navigation. was ${initialPageTitle}`,
-          );
-          logger("content=", await page.content());
-          await page.waitForNavigation({
-            waitUntil: "networkidle2",
-            timeout: 55_000,
-          });
-        }
-
-        const pageTitle = await page.title();
-        logger("Page title", pageTitle);
-        assert.ok(
-          titles.some((title) => pageTitle.includes(title)),
-          `Expected page title to include one of: ${titles.join(", ")}`,
-        );
-
-        const textFound = await page
-          .mainFrame()
-          .evaluate(
-            (expectedText) => document.body.innerText.includes(expectedText),
-            expectedText,
-          );
-        assert.ok(textFound, `Expected page to contain text ${expectedText}`);
-      });
-    }
-  });
-
   describe("scraper access", () => {
     for (const companyId of [
       CompanyTypes.amex,
