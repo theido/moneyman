@@ -30,7 +30,7 @@ import { filterInsuranceVendorTransactions } from "./insurance-vendors.js";
 
 const baseLogger = createLogger("storage");
 
-export const storages = [
+export const storages: TransactionStorage[] = [
   new LocalJsonStorage(config),
   new GoogleSheetsStorage(config),
   new AzureDataExplorerStorage(config),
@@ -62,7 +62,18 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
     if (txns.length > 0) {
       const invoiceCreator = new InvoiceCreator(config);
       try {
-        await invoiceCreator.createInvoicesForTransactions(txns);
+        const existingInvoiceTransactionIds = new Set<string>();
+        for (const storage of storages) {
+          if (storage.getInvoiceTransactionIds) {
+            for (const id of await storage.getInvoiceTransactionIds()) {
+              existingInvoiceTransactionIds.add(id);
+            }
+          }
+        }
+        await invoiceCreator.createInvoicesForTransactions(
+          txns,
+          existingInvoiceTransactionIds,
+        );
         baseLogger(
           "Invoice creation completed for",
           txns.length,

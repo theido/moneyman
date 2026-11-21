@@ -193,4 +193,100 @@ describe("GoogleSheetsStorage", () => {
       expect(newStorage.canSave()).toBe(false);
     });
   });
+
+  it("loads transaction IDs that already have an invoice", async () => {
+    (mockSheet as any).headerValues = ["hash", "pdf_link", "doc_number"];
+    const get = jest.fn(
+      (key: string) =>
+        ({
+          hash: "already-invoiced",
+          pdf_link: "https://files.example/invoice.pdf",
+          doc_number: "30241",
+        })[key],
+    );
+    mockSheet.getRows.mockResolvedValue([{ get } as never]);
+
+    await expect(storage.getInvoiceTransactionIds()).resolves.toEqual(
+      new Set(["already-invoiced"]),
+    );
+  });
+
+  it("does not treat partial invoice metadata as a completed invoice", async () => {
+    (mockSheet as any).headerValues = ["hash", "pdf_link", "doc_number"];
+    mockSheet.getRows.mockResolvedValue([
+      {
+        get: (key: string) =>
+          ({ hash: "partial-invoice", doc_number: "30241" })[key],
+      } as never,
+    ]);
+
+    await expect(storage.getInvoiceTransactionIds()).resolves.toEqual(
+      new Set(),
+    );
+  });
+
+  it("ignores raw cells that contain JSON without transaction fields", async () => {
+    (mockSheet as any).headerValues = ["hash", "raw"];
+    mockSheet.getRows.mockResolvedValue([
+      {
+        get: (key: string) => ({ hash: "old-hash", raw: "null" })[key],
+      } as never,
+    ]);
+
+    await expect(storage.getInvoiceTransactionIds()).resolves.toEqual(
+      new Set(),
+    );
+  });
+
+  it("saves invoice metadata onto a transaction already in the sheet", async () => {
+    (mockSheet as any).headerValues = ["hash", "pdf_link", "doc_number"];
+    mockSheet.getCellsInRange.mockResolvedValue([["old-hash"]]);
+    const savedRow: Record<string, string> = { hash: "old-hash" };
+    mockSheet.getRows.mockResolvedValue([
+      {
+        get: (key: string) => savedRow[key],
+        set: (key: string, value: string) => {
+          savedRow[key] = value;
+        },
+        save: async () => {},
+      } as never,
+    ]);
+
+    await storage.saveTransactions(
+      [
+        transactionRow({
+          hash: "old-hash",
+          uniqueId: "new-id",
+          pdf_link: "https://files.example/invoice.pdf",
+          doc_number: "30241",
+        }),
+      ],
+      async () => {},
+    );
+
+    expect(savedRow).toEqual({
+      hash: "old-hash",
+      pdf_link: "https://files.example/invoice.pdf",
+      doc_number: "30241",
+    });
+    expect(mockSheet.addRows).not.toHaveBeenCalled();
+  });
+
+  it("makes room for invoice columns on a sheet without spare columns", async () => {
+    (mockSheet as any).headerValues = ["hash"];
+    (mockSheet as any).columnCount = 1;
+    mockSheet.setHeaderRow.mockImplementation(async (headers) => {
+      if (headers.length > mockSheet.columnCount) {
+        throw new Error("Sheet is not large enough");
+      }
+      (mockSheet as any).headerValues = headers;
+    });
+    mockSheet.resize.mockImplementation(async ({ columnCount }) => {
+      (mockSheet as any).columnCount = columnCount;
+    });
+
+    await storage.saveTransactions([], async () => {});
+
+    expect(mockSheet.headerValues).toEqual(["hash", "pdf_link", "doc_number"]);
+  });
 });

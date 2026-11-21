@@ -47,6 +47,7 @@ export interface SaveContext {
 
 export interface TransactionStorage {
   canSave(): boolean;
+  getInvoiceTransactionIds?(): Promise<Set<string>>;
   saveTransactions(
     txns: Array<TransactionRow>,
     onProgress: (status: string) => Promise<void>,

@@ -532,6 +532,7 @@ describe("InvoiceCreator", () => {
       הראל: "520004078",
       מנורה: "520042540",
       פניקס: "520023185",
+      "פספורטכארד-י": "514831742",
     };
     const invoiceConfig = config();
     invoiceConfig.storage.invoice = {
@@ -557,5 +558,26 @@ describe("InvoiceCreator", () => {
       "https://example.com/api/createDoc",
       expect.anything(),
     );
+  });
+
+  it("does not recreate an invoice whose transaction ID is already stored", async () => {
+    const mockFetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const invoiceConfig = config();
+    invoiceConfig.storage.invoice = {
+      baseUrl: "https://example.com",
+      developerEmail: "developer@example.com",
+      apiKey: "api-key",
+    };
+
+    await new InvoiceCreator(invoiceConfig).createInvoicesForTransactions(
+      [transactionRow({ uniqueId: "already-invoiced" })],
+      new Set(["already-invoiced"]),
+    );
+
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

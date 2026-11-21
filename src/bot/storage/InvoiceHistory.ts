@@ -29,9 +29,9 @@ export async function getInvoiceHistory(
   assert(sheet, "Invoice history worksheet not found");
   await sheet.loadHeaderRow();
   if (
-    !["hash", "doc_number", "pdf_link"].every((h) =>
-      sheet.headerValues.includes(h),
-    )
+    !sheet.headerValues.includes("hash") ||
+    (!sheet.headerValues.includes("raw") &&
+      !["doc_number", "pdf_link"].every((h) => sheet.headerValues.includes(h)))
   ) {
     return undefined;
   }
@@ -39,8 +39,22 @@ export async function getInvoiceHistory(
   const rows = await sheet.getRows();
   for (const row of rows) {
     const hash = String(row.get("hash") ?? "");
-    const doc_number = String(row.get("doc_number") ?? "") || undefined;
-    const pdf_link = String(row.get("pdf_link") ?? "") || undefined;
+    let raw: Record<string, unknown> = {};
+    const rawValue = row.get("raw");
+    if (typeof rawValue === "string" && rawValue) {
+      try {
+        const parsed: unknown = JSON.parse(rawValue);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          raw = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // Ignore malformed raw values and use the dedicated columns.
+      }
+    }
+    const doc_number =
+      String(row.get("doc_number") || raw.doc_number || "") || undefined;
+    const pdf_link =
+      String(row.get("pdf_link") || raw.pdf_link || "") || undefined;
     // Keep bare transaction hashes too: a saved row without invoice metadata
     // cannot prove whether EZcount has already created its invoice.
     if (!hash) continue;
