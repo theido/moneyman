@@ -5,24 +5,24 @@ const {
   systemName,
   TRANSACTION_HASH_TYPE,
 } = process.env;
-import axios from 'axios';
+import axios from "axios";
 import { parseISO, format } from "date-fns";
 import { TransactionStatuses } from "israeli-bank-scrapers/lib/transactions.js";
 import { createLogger, logToPublicLog } from "../../utils/logger.js";
-import { TransactionRow, TransactionStorage } from '../../types';
-import { SaveStats } from '../saveStats';
+import { TransactionRow, TransactionStorage } from "../../types";
+import { SaveStats } from "../saveStats";
 import type { MoneymanConfig } from "../../config.js";
 
 const logger = createLogger("MondayStorage");
-const URL = 'https://api.monday.com/v2';
+const URL = "https://api.monday.com/v2";
 interface MondayTransaction {
   uniqueId: string;
   account: string;
   date: string;
   amount: number;
   description: string;
-  status: 'cleared' | 'pending';
-  type: 'income' | 'expense';
+  status: "cleared" | "pending";
+  type: "income" | "expense";
   memo: string;
   category: string;
   scraped_by: string;
@@ -32,12 +32,11 @@ interface MondayTransaction {
   processedDate: string;
 }
 export class MondayStorage implements TransactionStorage {
-
   existingTransactionsHashes = new Set<string>();
   private initPromise: null | Promise<void> = null;
-  private uniqueIdColumnID = "text__1"
+  private uniqueIdColumnID = "text__1";
 
-  constructor(private config: MoneymanConfig) { }
+  constructor(private config: MoneymanConfig) {}
 
   async init() {
     // Init only once
@@ -55,11 +54,13 @@ export class MondayStorage implements TransactionStorage {
   }
   private async loadHashes() {
     if (!MONDAY_BOARD_ID) {
-      throw new Error('MONDAY_BOARD_ID is not defined');
+      throw new Error("MONDAY_BOARD_ID is not defined");
     }
     const items = await this.getAllItemsFromBoard(+MONDAY_BOARD_ID);
     for (const item of items) {
-      const columnValue = item.column_values.find((col: any) => col.id === this.uniqueIdColumnID);
+      const columnValue = item.column_values.find(
+        (col: any) => col.id === this.uniqueIdColumnID,
+      );
       if (columnValue && columnValue.text) {
         this.existingTransactionsHashes.add(columnValue.text);
       }
@@ -69,8 +70,8 @@ export class MondayStorage implements TransactionStorage {
 
   async getAllItemsFromBoard(boardId: number): Promise<Item[]> {
     const headers = {
-      'Authorization': MONDAY_TOKEN,
-      'Content-Type': 'application/json'
+      Authorization: MONDAY_TOKEN,
+      "Content-Type": "application/json",
     };
     const today = new Date();
     // Calculate past date by subtracting `daysAgo`
@@ -100,23 +101,27 @@ export class MondayStorage implements TransactionStorage {
     `;
 
     try {
-      const response = await axios.post<ResponseData>(URL, { query: query }, { headers: headers });
+      const response = await axios.post<ResponseData>(
+        URL,
+        { query: query },
+        { headers: headers },
+      );
 
       if (response.data.errors) {
-        console.error('Error fetching items:', response.data.errors);
+        console.error("Error fetching items:", response.data.errors);
         return [];
       } else {
         return response.data.data.boards[0].items_page.items;
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error("Error:", error);
       return [];
     }
   }
 
   async saveTransactions(
     txns: Array<TransactionRow>,
-    onProgress: (status: string) => Promise<void>
+    onProgress: (status: string) => Promise<void>,
   ) {
     await this.init();
 
@@ -173,26 +178,26 @@ export class MondayStorage implements TransactionStorage {
       // this.tagTransactionsByRules(txToSend);
 
       // Send transactions to Monday
-      logToPublicLog(
-        `sending ${txToSend.length} transactions to Monday`,
-      );
+      logToPublicLog(`sending ${txToSend.length} transactions to Monday`);
       if (!MONDAY_BOARD_ID) {
-        throw new Error('MONDAY_BOARD_ID is not defined');
+        throw new Error("MONDAY_BOARD_ID is not defined");
       }
-      const resp = await this.createItemsFromTransactions(+MONDAY_BOARD_ID, txToSend);
+      const resp = await this.createItemsFromTransactions(
+        +MONDAY_BOARD_ID,
+        txToSend,
+      );
 
       logToPublicLog("transactions sent to Monday successfully!");
       stats.otherSkipped += stats.existing;
     }
 
     return stats;
-
   }
 
   private formatDate(date: Date): string {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed, so add 1
-    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed, so add 1
+    const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
 
@@ -201,18 +206,30 @@ export class MondayStorage implements TransactionStorage {
   }
 
   // Function to create items from a list of MondayTransactions
-  private async createItemsFromTransactions(boardId: number, transactions: MondayTransaction[], delayMs: number = 3000): Promise<void> {
+  private async createItemsFromTransactions(
+    boardId: number,
+    transactions: MondayTransaction[],
+    delayMs: number = 3000,
+  ): Promise<void> {
     for (const transaction of transactions) {
       await this.createMondayItem(boardId, transaction);
       await this.delay(delayMs); // Introduce delay between requests
     }
   }
   // Function to create an item on Monday.com
-  private async createMondayItem(boardId: number, transaction: MondayTransaction): Promise<void> {
+  private async createMondayItem(
+    boardId: number,
+    transaction: MondayTransaction,
+  ): Promise<void> {
     // First check if item exists
-    const itemExists = await this.checkItemExists(boardId, transaction.uniqueId);
+    const itemExists = await this.checkItemExists(
+      boardId,
+      transaction.uniqueId,
+    );
     if (itemExists) {
-      logToPublicLog(`Item with uniqueId ${transaction.uniqueId} already exists, skipping creation`);
+      logToPublicLog(
+        `Item with uniqueId ${transaction.uniqueId} already exists, skipping creation`,
+      );
       return;
     }
 
@@ -221,8 +238,8 @@ export class MondayStorage implements TransactionStorage {
 
     // Headers for the request
     const headers = {
-      'Authorization': MONDAY_TOKEN,
-      'Content-Type': 'application/json'
+      Authorization: MONDAY_TOKEN,
+      "Content-Type": "application/json",
     };
 
     // The GraphQL query for creating an item
@@ -240,23 +257,34 @@ export class MondayStorage implements TransactionStorage {
 
     try {
       // Send the request
-      const response = await axios.post(URL, { query: query }, { headers: headers });
+      const response = await axios.post(
+        URL,
+        { query: query },
+        { headers: headers },
+      );
 
       // Handle the response
       if (response.data.errors) {
-        console.error('Error creating item:', response.data.errors, columnValues);
+        console.error(
+          "Error creating item:",
+          response.data.errors,
+          columnValues,
+        );
       } else {
-        logger('Item created successfully:', response.data.data.create_item.id);
+        logger("Item created successfully:", response.data.data.create_item.id);
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error("Error:", error);
     }
   }
 
-  private async checkItemExists(boardId: number, uniqueId: string): Promise<boolean> {
+  private async checkItemExists(
+    boardId: number,
+    uniqueId: string,
+  ): Promise<boolean> {
     const headers = {
-      'Authorization': MONDAY_TOKEN,
-      'Content-Type': 'application/json'
+      Authorization: MONDAY_TOKEN,
+      "Content-Type": "application/json",
     };
 
     const query = `
@@ -275,19 +303,19 @@ export class MondayStorage implements TransactionStorage {
       const response = await axios.post(URL, { query }, { headers });
 
       if (response.data.errors) {
-        console.error('Error checking item existence:', response.data.errors);
+        console.error("Error checking item existence:", response.data.errors);
         return false;
       }
 
       return response.data.data.items_page_by_column_values.items.length > 0;
     } catch (error) {
-      console.error('Error checking item existence:', error);
+      console.error("Error checking item existence:", error);
       return false;
     }
   }
 
   private convertTransactionToMondayItem(
-    tx: TransactionRow
+    tx: TransactionRow,
   ): MondayTransaction {
     return {
       date: format(parseISO(tx.date), "yyyy-MM-dd", {}),
@@ -313,7 +341,7 @@ export class MondayStorage implements TransactionStorage {
     const columnValues = {
       date: transaction.date,
       numbers: transaction.amount,
-      text1: transaction.memo.replace(/"/g, ''),
+      text1: transaction.memo.replace(/"/g, ""),
       date8: transaction.scraped_at,
       text0: transaction.identifier,
       status__1: transaction.chargedCurrency,
@@ -321,8 +349,8 @@ export class MondayStorage implements TransactionStorage {
       status03__1: transaction.account,
       date_mkpn8z61: transaction.processedDate,
       category_mkmwkz7p: {
-        labels: [transaction.category]
-      }
+        labels: [transaction.category],
+      },
     };
 
     return JSON.stringify(columnValues).replace(/"/g, '\\"');
@@ -330,14 +358,15 @@ export class MondayStorage implements TransactionStorage {
 }
 
 function escapeString(input: string): string {
-  return input.replace(/\\/g, '\\\\')
+  return input
+    .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t');
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
 }
 
-// TODO: extratct to monday api helper with the function above of graphQL 
+// TODO: extratct to monday api helper with the function above of graphQL
 
 interface ColumnValue {
   id: string;
