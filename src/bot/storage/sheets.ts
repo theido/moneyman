@@ -6,7 +6,6 @@ import {
 } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import type { TransactionRow, TransactionStorage } from "../../types.js";
-import { TransactionStatuses } from "israeli-bank-scrapers/lib/transactions.js";
 import { sendError } from "../notifier.js";
 import { sendDeprecationMessage } from "../deprecationManager.js";
 import { createSaveStats } from "../saveStats.js";
@@ -115,28 +114,35 @@ export class GoogleSheetsStorage implements TransactionStorage {
           logger(`Skipping, old hash ${tx.hash} is already in the sheet`);
         }
 
-        // To avoid double counting, skip if the new hash is already in the sheet
-        if (!existingHashes.has(tx.uniqueId)) {
-          stats.existing++;
-        }
-
+        stats.existing++;
         return false;
       }
 
-      return tx.status !== TransactionStatuses.Pending;
+      return true;
     });
 
     const hasRawColumn = sheet.headerValues.includes("raw");
-    const rows = newTxns.map((tx) => tableRow(tx, hasRawColumn));
+    const rows = newTxns.map((tx) =>
+      tableRow(
+        tx,
+        hasRawColumn,
+        this.config.options.scraping.transactionHashType,
+      ),
+    );
     if (rows.length) {
       stats.highlightedTransactions.Added.push(...newTxns);
       stats.added = rows.length;
       const [addRowsResult] = await Promise.allSettled([
-        sheet.addRows(rows),
+        sheet.addRows(
+          rows.map((row) => ({ ...row, amount: row.amount ?? "" })),
+        ),
         onProgress(`Saving ${rows.length} rows`),
       ]);
       if (this.config.options.scraping.transactionHashType !== "moneyman") {
-        sendDeprecationMessage("hashFiledChange");
+        sendDeprecationMessage(
+          "hashFiledChange",
+          this.config.options.scraping.hiddenDeprecations,
+        );
       }
 
       if (addRowsResult.status === "rejected") {

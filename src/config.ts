@@ -2,9 +2,12 @@ import "dotenv/config";
 import { subDays } from "date-fns";
 import { Telegraf } from "telegraf";
 import { readFileSync } from "fs";
-import { AccountConfig, ScraperConfig } from "./types.js";
+import { AccountConfig } from "./types.js";
 import { createLogger, logToPublicLog } from "./utils/logger.js";
+import { loadConfigSecretSync, readConfigSecret } from "./configSecret.js";
 import { parseJsoncConfig } from "./utils/jsonc.js";
+import type { ScraperRunConfig } from "./scraper/protocol.js";
+import { sendDeprecationMessage } from "./bot/deprecationManager.js";
 import {
   MoneymanConfigSchema,
   type MoneymanConfig,
@@ -21,16 +24,24 @@ export const systemName = "moneyman";
 const logger = createLogger("config");
 
 logger("Parsing config");
+export const configSecret = readConfigSecret(process.env);
 const config: MoneymanConfig = createConfig();
 export { config };
 
 function createConfig() {
+  if (configSecret) {
+    const validatedConfig = loadConfigSecretSync(configSecret);
+    logger("Configuration successfully loaded from secret provider");
+    return validatedConfig;
+  }
+
   const { MONEYMAN_CONFIG, MONEYMAN_CONFIG_PATH } = process.env;
   if (MONEYMAN_CONFIG) {
     logger("Using MONEYMAN_CONFIG");
     try {
       const parsedConfig = parseJsoncConfig(MONEYMAN_CONFIG);
-      return MoneymanConfigSchema.parse(parsedConfig);
+      const validatedConfig = MoneymanConfigSchema.parse(parsedConfig);
+      return validatedConfig;
     } catch (error) {
       logger(
         "Failed to parse MONEYMAN_CONFIG. Unable to continue with invalid configuration",
@@ -81,26 +92,70 @@ logger("Env", {
 
 logger("config loaded", config.options.scraping);
 
-function getAccounts(): Array<AccountConfig> {
-  const allAccounts = config.accounts as Array<AccountConfig>;
-  const { accountsToScrape } = config.options.scraping;
-
-  return !accountsToScrape || accountsToScrape.length === 0
+export function getAccounts(
+  snapshot: MoneymanConfig,
+  choices?: string[],
+): Array<AccountConfig> {
+  const allAccounts = snapshot.accounts as Array<AccountConfig>;
+  const { accountsToScrape, hiddenDeprecations } = snapshot.options.scraping;
+  const scrapeIds = new Set(allAccounts.map((account) => account.scrapeId));
+  const legacyCompanies =
+    accountsToScrape?.filter(
+      (value) =>
+        !scrapeIds.has(value) &&
+        allAccounts.some((account) => account.companyId === value),
+    ) ?? [];
+  if (legacyCompanies.length)
+    sendDeprecationMessage("accountsToScrapeCompanyId", hiddenDeprecations);
+  const allowed = !accountsToScrape?.length
     ? allAccounts
-    : allAccounts.filter((account) =>
-        accountsToScrape.includes(account.companyId),
+    : allAccounts.filter(
+        (account) =>
+          (account.scrapeId !== undefined &&
+            accountsToScrape.includes(account.scrapeId)) ||
+          legacyCompanies.includes(account.companyId),
       );
+  if (!choices) return allowed;
+  if (
+    !choices.length ||
+    choices.some(
+      (choice) => !allowed.some((account) => account.scrapeId === choice),
+    )
+  )
+    return [];
+  return allowed.filter(
+    (account) =>
+      account.scrapeId !== undefined && choices.includes(account.scrapeId),
+  );
 }
 
-export const scraperConfig: ScraperConfig = {
-  accounts: getAccounts(),
-  startDate: subDays(Date.now(), config.options.scraping.daysBack),
-  parallelScrapers: config.options.scraping.maxParallelScrapers,
-  futureMonthsToScrape: config.options.scraping.futureMonths,
-  additionalTransactionInformation:
-    config.options.scraping.additionalTransactionInfo,
-  includeRawTransaction: config.options.scraping.includeRawTransaction,
-};
+/**
+ * Build the scraper configuration for a single run.
+ *
+ * This MUST be called per run: `startDate` is relative to "now", so a
+ * long-running process that reused a single config object would keep scraping
+ * from the date the process started and miss everything after `daysBack`.
+ */
+export function getScraperConfig(
+  snapshot: MoneymanConfig = config,
+  choices?: string[],
+): ScraperRunConfig {
+  return {
+    accounts: getAccounts(snapshot, choices),
+    startDate: subDays(Date.now(), snapshot.options.scraping.daysBack),
+    parallelScrapers: snapshot.options.scraping.maxParallelScrapers,
+    futureMonthsToScrape: snapshot.options.scraping.futureMonths,
+    additionalTransactionInformation:
+      snapshot.options.scraping.additionalTransactionInfo,
+    includeRawTransaction: snapshot.options.scraping.includeRawTransaction,
+    executablePath: snapshot.options.scraping.puppeteerExecutablePath,
+    headless: snapshot.options.scraping.headless,
+    domainTracking: snapshot.options.scraping.domainTracking,
+    firewallSettings: snapshot.options.security.firewallSettings ?? [],
+    blockByDefault: snapshot.options.security.blockByDefault,
+    enableOtp: config.options.notifications.telegram?.enableOtp === true,
+  };
+}
 
 /**
  * A function to send a telegram message if the config fails to load

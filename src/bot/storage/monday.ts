@@ -317,6 +317,9 @@ export class MondayStorage implements TransactionStorage {
   private convertTransactionToMondayItem(
     tx: TransactionRow,
   ): MondayTransaction {
+    if (tx.chargedAmount == null) {
+      throw new Error("Monday transaction amount is required");
+    }
     return {
       date: format(parseISO(tx.date), "yyyy-MM-dd", {}),
       amount: tx.chargedAmount,

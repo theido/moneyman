@@ -49,6 +49,9 @@ export class InvoiceCreator {
     if (!txn.uniqueId?.trim()) {
       throw new Error("Invoice transaction_id is required");
     }
+    if (txn.originalAmount == null) {
+      throw new Error("Invoice transaction amount is required");
+    }
     // You can adjust these values as needed
     const price = Math.abs(txn.originalAmount);
     const date = this.formatDate(txn.processedDate);

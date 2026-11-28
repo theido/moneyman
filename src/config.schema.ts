@@ -1,10 +1,12 @@
 import z from "zod/v4";
+import { validate } from "node-cron";
 
 // TODO: Use the actual login field combinations from israeli-bank-scrapers once available
 // Account configuration schema based on israeli-bank-scrapers login field combinations
 const AccountSchema = z.looseObject({
   companyId: z.string().min(1, { error: "Company ID is required" }),
   password: z.string().min(1, { error: "Password is required" }),
+  scrapeId: z.string().min(1).optional(),
 });
 
 // Storage provider schemas
@@ -131,6 +133,7 @@ export const StorageSchema = z
 
 // Options schemas
 export const ScrapingOptionsSchema = z.object({
+  /** Select scrapeId labels; legacy company IDs are used only when no label matches. Empty means all. */
   accountsToScrape: z.array(z.string()).optional(),
   daysBack: z.number().min(1).max(365).default(10),
   futureMonths: z.number().min(0).max(12).default(1),
@@ -139,6 +142,7 @@ export const ScrapingOptionsSchema = z.object({
   includeRawTransaction: z.boolean().default(false),
   hiddenDeprecations: z.array(z.string()).default([]),
   puppeteerExecutablePath: z.string().optional(),
+  headless: z.boolean().default(true),
   maxParallelScrapers: z.number().min(1).max(10).default(1),
   domainTracking: z.boolean().default(false),
 });
@@ -163,11 +167,27 @@ export const NotificationOptionsSchema = z.object({
        */
       otpTimeoutSeconds: z.number().min(30).max(600).optional().default(300),
       /**
-       * Whether to send the log file to Telegram when using secure logging (MONEYMAN_UNSAFE_STDOUT=false).
+       * Whether to send the offline HTML report to Telegram.
+       * @default true
+       */
+      sendReportFileToTelegram: z.boolean().optional().default(true),
+      /**
+       * Whether to send captured logs to Telegram when using secure logging (MONEYMAN_UNSAFE_STDOUT=false).
+       * Logs are included in the HTML report, with a standalone fallback if they cannot be included or delivered.
        * Only applies when output redirection is enabled.
        * @default true
        */
       sendLogFileToTelegram: z.boolean().optional().default(true),
+      /**
+       * Minimum time in milliseconds between edits of the status message.
+       * Values below 250 are raised to 250 to stay within Telegram's rate limits.
+       * @default 500
+       */
+      updateIntervalMs: z
+        .number()
+        .optional()
+        .default(500)
+        .transform((value) => Math.max(250, value)),
     })
     .optional(),
 });
@@ -179,11 +199,19 @@ export const LoggingOptionsSchema = z.object({
   debugFilter: z.string().optional().default("moneyman:*"),
 });
 
+export const SchedulingOptionsSchema = z.object({
+  cron: z
+    .string()
+    .refine(validate, { error: "Invalid cron expression" })
+    .optional(),
+});
+
 const OptionsSchemaObject = z.object({
   scraping: ScrapingOptionsSchema.prefault({}),
   security: SecurityOptionsSchema.prefault({}),
   notifications: NotificationOptionsSchema.prefault({}),
   logging: LoggingOptionsSchema.prefault({}),
+  scheduling: SchedulingOptionsSchema.prefault({}),
 });
 
 // Complete configuration schema

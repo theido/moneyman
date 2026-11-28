@@ -4,63 +4,75 @@ import {
   TransactionRow,
   TransactionStorage,
   SaveContext,
+  RunTiming,
 } from "../../types.js";
-import { config } from "../../config.js";
+import { randomUUID } from "node:crypto";
 import { createLogger } from "../../utils/logger.js";
 import { loggerContextStore } from "../../utils/asyncContext.js";
-import { Timer } from "../../utils/Timer.js";
-import { saving } from "../messages.js";
-import { editMessage, send, sendError } from "../notifier.js";
-import { statsString } from "../saveStats.js";
+import { sendError } from "../notifier.js";
+import type { RunReport, Step } from "../runReport.js";
 import { ActualBudgetStorage } from "./actual.js";
 import { AzureDataExplorerStorage } from "./azure-data-explorer.js";
 import { BuxferStorage } from "./buxfer.js";
 import { InvoiceCreator } from "./InvoiceCreator.js";
+import { filterInsuranceVendorTransactions } from "./insurance-vendors.js";
 import { LocalJsonStorage } from "./json.js";
 import { GoogleSheetsStorage } from "./sheets.js";
-import { transactionHash, transactionUniqueId } from "./utils.js";
+import {
+  nonPendingTransactions,
+  transactionHash,
+  transactionUniqueId,
+} from "./utils.js";
 import { WebPostStorage } from "./web-post.js";
 import { TelegramStorage } from "./telegram.js";
 import { YNABStorage } from "./ynab.js";
-import { MondayStorage } from "./monday.js";
 import { SqlStorage } from "./sql.js";
 import { MoneymanDashStorage } from "./moneyman.js";
-
-import { filterInsuranceVendorTransactions } from "./insurance-vendors.js";
+import { MondayStorage } from "./monday.js";
+import { formatUnknownError } from "../../utils/utils.js";
+import type { MoneymanConfig } from "../../config.js";
 
 const baseLogger = createLogger("storage");
 
-export const storages: TransactionStorage[] = [
-  new LocalJsonStorage(config),
-  new GoogleSheetsStorage(config),
-  new AzureDataExplorerStorage(config),
-  new YNABStorage(config),
-  new BuxferStorage(config),
-  new WebPostStorage(config),
-  new TelegramStorage(config),
-  new ActualBudgetStorage(config),
-  new MondayStorage(config),
-  new SqlStorage(config),
-  new MoneymanDashStorage(config),
-].filter((s) => s.canSave());
+export function createStorages(config: MoneymanConfig): TransactionStorage[] {
+  return [
+    new LocalJsonStorage(config),
+    new GoogleSheetsStorage(config),
+    new AzureDataExplorerStorage(config),
+    new YNABStorage(config),
+    new BuxferStorage(config),
+    new WebPostStorage(config),
+    new TelegramStorage(config),
+    new ActualBudgetStorage(config),
+    new MondayStorage(config),
+    new SqlStorage(config),
+    new MoneymanDashStorage(config),
+  ].filter((s) => s.canSave());
+}
 
-export async function saveResults(results: Array<AccountScrapeResult>) {
+export async function saveResults(
+  results: Array<AccountScrapeResult>,
+  report: RunReport,
+  storages: readonly TransactionStorage[],
+  config?: MoneymanConfig,
+) {
   if (storages.length === 0) {
-    await send("No storages found, skipping save");
+    baseLogger("No storages found, skipping save");
+    report.notices.push("No storages found, skipping save");
     return;
   }
 
-  const allTransactions = await resultsToTransactions(results);
-
-  if (allTransactions.length === 0) {
-    await send("No transactions found, skipping save");
+  const txns = resultsToTransactions(results);
+  if (txns.length === 0) {
+    baseLogger("No transactions found, skipping save");
+    report.notices.push("No transactions found, skipping save");
     return;
   }
+  const nonPendingTxns = nonPendingTransactions(txns);
 
-  if (config.storage.invoice) {
-    const txns = filterInsuranceVendorTransactions(allTransactions);
-    if (txns.length > 0) {
-      const invoiceCreator = new InvoiceCreator(config);
+  if (config?.storage.invoice) {
+    const invoiceTxns = filterInsuranceVendorTransactions(nonPendingTxns);
+    if (invoiceTxns.length) {
       try {
         const existingInvoiceTransactionIds = new Set<string>();
         for (const storage of storages) {
@@ -70,24 +82,28 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
             }
           }
         }
-        await invoiceCreator.createInvoicesForTransactions(
-          txns,
+        await new InvoiceCreator(config).createInvoicesForTransactions(
+          invoiceTxns,
           existingInvoiceTransactionIds,
         );
         baseLogger(
           "Invoice creation completed for",
-          txns.length,
+          invoiceTxns.length,
           "transactions",
         );
-      } catch (e) {
-        baseLogger("Error creating invoices:", e);
-        await sendError(e, "InvoiceCreator");
+      } catch (error) {
+        baseLogger("Error creating invoices:", error);
+        await sendError(error, "InvoiceCreator");
+        report.errors.push({
+          caller: "InvoiceCreator",
+          message: formatUnknownError(error),
+        });
+        report.failed = true;
       }
-    } else {
-      baseLogger("No insurance vendor transactions found for invoice creation");
     }
   }
 
+  // Build context with per-account scraping results
   const context: SaveContext = {
     accountResults: results.map((r) => ({
       companyId: r.companyId,
@@ -102,43 +118,82 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
 
   await parallel(
     storages.map((storage: TransactionStorage) => async () => {
+      const storageTxns =
+        storage.supportsPendingTransactions === true ? txns : nonPendingTxns;
+      const skippedPending = txns.length - storageTxns.length;
       const { name } = storage.constructor;
       const logger = baseLogger.extend(name);
-      const steps: Array<Timer> = [];
+      const steps: Array<Step> = [];
+      report.timings ??= [];
+      const timings = report.timings;
+      timings.push({
+        id: `storage-${randomUUID()}`,
+        kind: "storage",
+        name,
+        startedAt: Date.now(),
+      });
+      const timing = timings[timings.length - 1];
+      let activeStep: RunTiming | undefined;
+      let stepStart = performance.now();
+      const endStep = () => {
+        const now = performance.now();
+        if (steps.length) steps[steps.length - 1].durationMs = now - stepStart;
+        if (activeStep) {
+          activeStep.endedAt = Date.now();
+          if (timing.failed) activeStep.failed = true;
+          activeStep = undefined;
+        }
+        stepStart = now;
+      };
 
       return loggerContextStore.run({ prefix: `[${name}]` }, async () => {
         try {
-          logger(`saving ${allTransactions.length} transactions`);
-          const message = await send(saving(name));
+          logger(`saving ${storageTxns.length} transactions`);
+          report.storages[name] = { state: "saving", steps: [] };
           const start = performance.now();
           const stats = await storage.saveTransactions(
-            allTransactions,
+            storageTxns,
             async (step) => {
-              steps.at(-1)?.end();
-              steps.push(new Timer(step));
-              await editMessage(message?.message_id, saving(name, steps));
+              endStep();
+              steps.push({ name: step });
+              timings.push({
+                id: `step-${randomUUID()}`,
+                parentId: timing.id,
+                kind: "step",
+                name: step,
+                startedAt: Date.now(),
+              });
+              activeStep = timings[timings.length - 1];
+              logger(`step "${step}"`);
+              report.storages[name] = { state: "saving", steps: [...steps] };
             },
             context,
           );
-          const duration = performance.now() - start;
-          steps.at(-1)?.end();
-          logger(`saved`);
-          await editMessage(
-            message?.message_id,
-            statsString(stats, duration, steps),
+          stats.total += skippedPending;
+          stats.pending += skippedPending;
+          const durationMs = performance.now() - start;
+          endStep();
+          logger(
+            `done ${(durationMs / 1000).toFixed(1)}s, ${stats.added} added`,
           );
+          report.storages[name] = { state: "done", stats, durationMs, steps };
         } catch (e) {
+          timing.failed = true;
           logger(`error saving transactions`, e);
-          await sendError(e, `saveTransactions::${name}`);
+          const message = formatUnknownError(e);
+          report.storages[name] = { state: "error", message };
+        } finally {
+          if (activeStep) endStep();
+          timing.endedAt = Date.now();
         }
       });
     }),
   );
 }
 
-async function resultsToTransactions(
+function resultsToTransactions(
   results: Array<AccountScrapeResult>,
-): Promise<Array<TransactionRow>> {
+): Array<TransactionRow> {
   const txns: Array<TransactionRow> = [];
 
   for (let { result, companyId } of results) {
@@ -158,14 +213,12 @@ async function resultsToTransactions(
               ),
             });
           } catch (error) {
-            // Skip transactions that fail hash generation and report the error
-            // Note: The full transaction object is intentionally included for debugging
-            // purposes as requested in the issue. This is sent via Telegram to help
-            // diagnose malformed transactions.
-            await sendError(
-              error,
-              `Failed to process transaction for ${companyId} account ${account.accountNumber}:\n${JSON.stringify(tx, null, 2)}`,
-            );
+            // Do not include account numbers or transaction details in notifications.
+            baseLogger("Transaction conversion failed", {
+              companyId,
+              errorType: error instanceof Error ? error.name : "unknown",
+            });
+            sendError("Transaction conversion failed", companyId);
           }
         }
       }

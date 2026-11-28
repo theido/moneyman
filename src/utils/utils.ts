@@ -1,7 +1,12 @@
+/// <reference lib="esnext.disposable" />
+import { createHash } from "node:crypto";
 import { inspect } from "node:util";
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function sha256(
+  value: string,
+  encoding: "base64" | "base64url" | "hex",
+): string {
+  return createHash("sha256").update(value, "utf8").digest(encoding);
 }
 
 function inspectUnknownObject(value: object): string {
@@ -14,6 +19,9 @@ function inspectUnknownObject(value: object): string {
 }
 
 export function formatUnknownError(value: unknown): string {
+  if (value instanceof SuppressedError) {
+    return `${formatUnknownError(value.suppressed)}; cleanup failed: ${formatUnknownError(value.error)}`;
+  }
   if (value instanceof Error) {
     return value.message;
   }

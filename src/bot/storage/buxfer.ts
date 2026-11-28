@@ -50,12 +50,6 @@ export class BuxferStorage implements TransactionStorage {
     const missingAccounts = new Set<string>();
 
     for (const tx of txns) {
-      const isPending = tx.status === TransactionStatuses.Pending;
-      // Ignore pending and only upload completed transactions
-      if (isPending) {
-        continue;
-      }
-
       const accountId = this.accountToBuxferAccount.get(tx.account);
       if (!accountId) {
         missingAccounts.add(tx.account);
@@ -106,6 +100,10 @@ export class BuxferStorage implements TransactionStorage {
     tx: TransactionRow,
     accountId: string,
   ): BuxferTransaction {
+    assert(
+      tx.chargedAmount !== null,
+      "Cannot export a null charged amount to Buxfer",
+    );
     return {
       accountId: Number(accountId),
       date: format(parseISO(tx.date), BUXFER_DATE_FORMAT, {}),
