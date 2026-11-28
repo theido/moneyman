@@ -47,8 +47,52 @@ export class GoogleSheetsStorage implements TransactionStorage {
       throw new Error(`Failed to load header row: ${headerRowResult.reason}`);
     }
     logger(`Loaded header row: ${sheet.headerValues}`);
+    const invoiceHeaders = ["pdf_link", "doc_number"] as const;
+    const missingInvoiceHeaders = invoiceHeaders.filter(
+      (header) => !sheet.headerValues.includes(header),
+    );
+    if (missingInvoiceHeaders.length > 0) {
+      const requiredColumnCount =
+        sheet.headerValues.length + missingInvoiceHeaders.length;
+      if (requiredColumnCount > sheet.columnCount) {
+        await sheet.resize({
+          rowCount: sheet.rowCount,
+          columnCount: requiredColumnCount,
+        });
+      }
+      await sheet.setHeaderRow([
+        ...sheet.headerValues,
+        ...missingInvoiceHeaders,
+      ]);
+    }
 
     const existingHashes = await this.loadHashes(sheet, onProgress);
+
+    const invoicedExistingTxns = txns.filter(
+      (tx) =>
+        (tx.pdf_link || tx.doc_number) &&
+        (existingHashes.has(tx.uniqueId) || existingHashes.has(tx.hash)),
+    );
+    if (invoicedExistingTxns.length > 0) {
+      const txById = new Map<string, TransactionRow>();
+      for (const tx of invoicedExistingTxns) {
+        txById.set(tx.uniqueId, tx);
+        txById.set(tx.hash, tx);
+      }
+      for (const row of await sheet.getRows()) {
+        const tx = txById.get(String(row.get("hash") ?? ""));
+        if (!tx) continue;
+        let changed = false;
+        for (const field of invoiceHeaders) {
+          const value = tx[field];
+          if (value && row.get(field) !== value) {
+            row.set(field, value);
+            changed = true;
+          }
+        }
+        if (changed) await row.save();
+      }
+    }
 
     const stats = createSaveStats("Google Sheets", this.worksheetName, txns, {
       highlightedTransactions: {
@@ -126,6 +170,45 @@ export class GoogleSheetsStorage implements TransactionStorage {
     }
 
     return stats;
+  }
+
+  async getInvoiceTransactionIds(): Promise<Set<string>> {
+    const doc = await this.getDoc();
+    const sheet = doc.sheetsByTitle[this.worksheetName];
+    assert(sheet, "Sheet " + this.worksheetName + " not found");
+    await sheet.loadHeaderRow();
+
+    const rows = await sheet.getRows();
+    const ids = new Set<string>();
+    for (const row of rows) {
+      const pdfLink = row.get("pdf_link" as never);
+      const docNumber = row.get("doc_number" as never);
+      let raw: {
+        uniqueId?: string;
+        hash?: string;
+        pdf_link?: string;
+        doc_number?: string;
+      } = {};
+      const rawValue = row.get("raw" as never);
+      if (typeof rawValue === "string" && rawValue) {
+        try {
+          const parsed: unknown = JSON.parse(rawValue);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            raw = parsed;
+          }
+        } catch {
+          // Ignore malformed raw values and use the dedicated columns.
+        }
+      }
+
+      if ((pdfLink || raw.pdf_link) && (docNumber || raw.doc_number)) {
+        const id = row.get("hash" as never);
+        if (typeof id === "string" && id) ids.add(id);
+        if (raw.uniqueId) ids.add(raw.uniqueId);
+        if (raw.hash) ids.add(raw.hash);
+      }
+    }
+    return ids;
   }
 
   private async getDoc() {

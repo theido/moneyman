@@ -7,9 +7,11 @@ This guide will help you set up the required GitHub secrets for the branch-speci
 You need to create the following secrets in your GitHub repository:
 
 ### 1. `ACCOUNTS_JSON_MONDAY_STORAGE`
+
 For the `monday-storage` branch workflow
 
-### 2. `ACCOUNTS_JSON_INVOICES` 
+### 2. `ACCOUNTS_JSON_INVOICES`
+
 For the `invoices` branch workflow
 
 ## ACCOUNTS_JSON Format
@@ -24,13 +26,13 @@ Each secret should contain a JSON array with account configurations. Here's the 
     "password": "your-password"
   },
   {
-    "companyId": "visaCal", 
+    "companyId": "visaCal",
     "username": "Your Username",
     "password": "your-password"
   },
   {
     "companyId": "leumi",
-    "username": "Your Username", 
+    "username": "Your Username",
     "password": "your-password"
   }
 ]
@@ -41,7 +43,7 @@ Each secret should contain a JSON array with account configurations. Here's the 
 Based on the israeli-bank-scrapers library, here are the common `companyId` values:
 
 - `hapoalim` - Bank Hapoalim
-- `leumi` - Bank Leumi  
+- `leumi` - Bank Leumi
 - `mizrahi` - Mizrahi Tefahot Bank
 - `discount` - Israel Discount Bank
 - `visaCal` - Visa Cal
@@ -58,6 +60,7 @@ Based on the israeli-bank-scrapers library, here are the common `companyId` valu
 Different banks require different fields:
 
 ### Bank Hapoalim (`hapoalim`)
+
 ```json
 {
   "companyId": "hapoalim",
@@ -67,15 +70,17 @@ Different banks require different fields:
 ```
 
 ### Visa Cal (`visaCal`)
+
 ```json
 {
-  "companyId": "visaCal", 
+  "companyId": "visaCal",
   "username": "Your Full Name",
   "password": "your-password"
 }
 ```
 
 ### Bank Leumi (`leumi`)
+
 ```json
 {
   "companyId": "leumi",
@@ -98,6 +103,7 @@ Different banks require different fields:
 ## Example Configurations
 
 ### For Monday Storage Branch
+
 ```json
 [
   {
@@ -107,13 +113,14 @@ Different banks require different fields:
   },
   {
     "companyId": "visaCal",
-    "username": "John Doe", 
+    "username": "John Doe",
     "password": "password123"
   }
 ]
 ```
 
 ### For Invoices Branch
+
 ```json
 [
   {

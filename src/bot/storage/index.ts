@@ -74,8 +74,17 @@ export async function saveResults(
     const invoiceTxns = filterInsuranceVendorTransactions(nonPendingTxns);
     if (invoiceTxns.length) {
       try {
+        const existingInvoiceTransactionIds = new Set<string>();
+        for (const storage of storages) {
+          if (storage.getInvoiceTransactionIds) {
+            for (const id of await storage.getInvoiceTransactionIds()) {
+              existingInvoiceTransactionIds.add(id);
+            }
+          }
+        }
         await new InvoiceCreator(config).createInvoicesForTransactions(
           invoiceTxns,
+          existingInvoiceTransactionIds,
         );
         baseLogger(
           "Invoice creation completed for",

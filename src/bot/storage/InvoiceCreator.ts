@@ -126,6 +126,7 @@ export class InvoiceCreator {
 
   async createInvoicesForTransactions(
     txns: Array<TransactionRow>,
+    existingInvoiceTransactionIds: ReadonlySet<string> = new Set(),
   ): Promise<TransactionRow[]> {
     let recorded = 0;
     let existing = 0;
@@ -163,6 +164,14 @@ export class InvoiceCreator {
       );
       if (previous?.pdf_link) txn.pdf_link = previous.pdf_link;
       if (previous?.doc_number) txn.doc_number = previous.doc_number;
+      if (
+        [txn.uniqueId, txn.hash].some((id) =>
+          existingInvoiceTransactionIds.has(id),
+        )
+      ) {
+        existing += 1;
+        continue;
+      }
       try {
         if (!txn.pdf_link || !txn.doc_number) {
           const result = await this.createInvoiceForTransaction(txn);

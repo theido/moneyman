@@ -21,11 +21,13 @@ export const TableHeaders = [
   "pdf_link",
   "doc_number",
   "raw",
+  "pdf_link",
+  "doc_number",
 ] as const;
 
 export type TableRow = Omit<
   Record<(typeof TableHeaders)[number], string>,
-  "amount" | "raw"
+  "amount" | "raw" | "pdf_link" | "doc_number"
 > & {
   amount: number | null;
   pdf_link?: string;

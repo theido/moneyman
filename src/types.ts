@@ -54,6 +54,8 @@ export interface TransactionStorage {
    */
   readonly supportsPendingTransactions?: boolean;
   canSave(): boolean;
+  /** Transaction IDs whose invoices have already been persisted. */
+  getInvoiceTransactionIds?(): Promise<Set<string>>;
   /** Called with completed transactions unless supportsPendingTransactions is true. */
   saveTransactions(
     txns: Array<TransactionRow>,

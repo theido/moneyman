@@ -81,6 +81,32 @@ describe("invoice history (read only)", () => {
     expect(mockGetRows).not.toHaveBeenCalled();
   });
 
+  it("loads invoice metadata from raw rows when invoice columns are absent", async () => {
+    mockSheet.headerValues = ["hash", "raw"];
+    mockGetRows.mockResolvedValue([
+      row({
+        hash: "old-hash",
+        raw: JSON.stringify({
+          uniqueId: "new-id",
+          pdf_link: "https://files.example/invoice.pdf",
+          doc_number: "30241",
+        }),
+      }),
+    ]);
+
+    expect(await getInvoiceHistory(historyConfig())).toEqual(
+      new Map([
+        [
+          "old-hash",
+          {
+            pdf_link: "https://files.example/invoice.pdf",
+            doc_number: "30241",
+          },
+        ],
+      ]),
+    );
+  });
+
   it("propagates read failures rather than returning a misleading empty history", async () => {
     mockLoadInfo.mockRejectedValueOnce(new Error("read failed"));
     await expect(getInvoiceHistory(historyConfig())).rejects.toThrow(
